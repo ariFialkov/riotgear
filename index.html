@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#0b0d12" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="Riotgear: a 3D third-person riot action betting game. Rioter or peacekeeper, pick your stake, break the line." />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <title>Riotgear</title>
+  </head>
+  <body>
+    <canvas id="gl"></canvas>
+    <div id="menu" class="screen"></div>
+    <div id="hud" class="screen hidden"></div>
+    <div id="result" class="screen hidden"></div>
+    <div id="boot" class="screen"><div class="boot-inner"><div class="boot-logo">RIOTGEAR</div><div class="boot-sub">generating city…</div></div></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

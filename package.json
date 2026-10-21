@@ -1,0 +1,21 @@
+{
+  "name": "riotgear",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Riotgear - a 3D third-person simulated-multiplayer action betting game (PWA)",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "node scripts/gen-icons.mjs && vite build",
+    "preview": "vite preview --host",
+    "icons": "node scripts/gen-icons.mjs",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1",
+    "vite": "^8.3.5"
+  }
+}
