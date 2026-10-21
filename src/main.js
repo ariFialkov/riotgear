@@ -65,7 +65,9 @@ function makeLobby(seed) {
       ? ['instigator', 'looter', 'brawler', 'rioter_npc', 'rioter_npc', 'instigator', 'looter', 'brawler', 'rioter_npc', 'rioter_npc', 'rioter_npc']
       : ['commander', 'front_echelon', 'front_echelon', 'snatch_squad', 'grenadier', 'front_echelon', 'snatch_squad', 'grenadier', 'peacekeeper_npc', 'front_echelon'];
     const w = WEAPONS[state.faction][state.weaponTier].id;
-    const focusIdx = roster.indexOf(state.archetype);
+    // put the selected archetype in the centre of the front row
+    const fi = roster.indexOf(state.archetype); [roster[2], roster[fi]] = [roster[fi], roster[2]];
+    const focusIdx = 2;
     roster.forEach((a, i) => {
       const row = i < 5 ? 0 : 1, col = i < 5 ? i : i - 5;
       const x = (col - 2) * 1.5 + rngL.float(-0.2, 0.2) + (row ? 0.75 : 0), z = baseZ - dir * (row * 1.6) + rngL.float(-0.2, 0.2);
@@ -75,6 +77,9 @@ function makeLobby(seed) {
     });
     const f = lineup.find((l) => l.focus) || lineup[0];
     L.focus = new THREE.Vector3(f.h.root.position.x, 0, f.h.root.position.z);
+    L.faceAngle = dir > 0 ? 0 : Math.PI;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 32), new THREE.MeshBasicMaterial({ color: F.color, transparent: true, opacity: 0.9, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(L.focus.x, 0.05, L.focus.z); group.add(ring); L.ring = ring;
     cine.first = true;
   };
   buildLineup();
@@ -141,7 +146,8 @@ function frame(now) {
   if (mode === 'lobby' && lobby) {
     lobby.t += dt; lobby.world.update(dt);
     for (const l of lobby.lineup) l.h.update(dt, { moving: false, stance: 1 });
-    cine.update(dt, lobby.focus, isMobile ? 8 : 9, isMobile ? 4.6 : 4.2, isMobile ? 0 : 2.6, isMobile ? -2.2 : 0);
+    if (lobby.ring) lobby.ring.scale.setScalar(1 + Math.sin(lobby.t * 3) * 0.08);
+    cine.update(dt, lobby.focus, isMobile ? 11 : 8.5, isMobile ? 6 : 3.8, isMobile ? 0 : 2.4, isMobile ? -3.4 : 0.2, lobby.faceAngle);
     countAcc += dt; if (countAcc >= 1) { countAcc = 0; state.countdown = Math.max(0, state.countdown - 1); menu.tick(); if (state.countdown === 0) startLiveRound(); }
   } else if (game) {
     game.update(dt);
@@ -164,3 +170,4 @@ addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__in
 // test hooks
 window.__step = (sec, dt = 1 / 30) => { if (!game) return; for (let i = 0; i < sec / dt; i++) { if (game.roundOver) break; game.update(dt); } };
 window.__startLive = () => startLiveRound();
+window.__input = input;

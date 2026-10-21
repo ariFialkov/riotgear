@@ -99,7 +99,7 @@ export class Projectiles {
         this.checkWindows(x, y, z, owner, 1.2);
         break;
       case 'bullet':
-        if (hit.char) { hit.char.takeHit(def?.dmg ?? 14, owner, 0.8, { stun: 0.35 }); E.hit(x, y, z, '#fff'); }
+        if (hit.char) { hit.char.takeHit(def?.dmg ?? 9, owner, 0.8, { stun: 0.3 }); E.hit(x, y, z, '#fff'); }
         else { E.sparks(x, y, z, '#ddd', 4); if (hit.prop) g.damageProp(hit.prop, 8, owner); }
         this.checkWindows(x, y, z, owner, 0.8);
         break;

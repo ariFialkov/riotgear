@@ -38,10 +38,12 @@ export class FollowCamera {
 /** Orbiting menu camera that keeps the selected lineup member framed. */
 export class CinematicCamera {
   constructor(camera) { this.cam = camera; this.t = 0; this.focus = new THREE.Vector3(); this.cur = new THREE.Vector3(); this.first = true; }
-  update(dt, focus, radius = 7, height = 3.2, offRight = 0, offUp = 0) {
-    this.t += dt * 0.18;
+  update(dt, focus, radius = 7, height = 3.2, offRight = 0, offUp = 0, faceAngle = 0) {
+    this.t += dt * 0.35;
     if (this.first) this.focus.copy(focus); else this.focus.lerp(focus, Math.min(1, dt * 2));
-    const want = new THREE.Vector3(this.focus.x + Math.cos(this.t) * radius, this.focus.y + height, this.focus.z + Math.sin(this.t) * radius);
+    // slow sweep across the front arc of the lineup (they face `faceAngle`), never behind them
+    const a = faceAngle + Math.sin(this.t) * 0.85;
+    const want = new THREE.Vector3(this.focus.x + Math.sin(a) * radius, this.focus.y + height, this.focus.z + Math.cos(a) * radius);
     if (this.first) { this.cur.copy(want); this.first = false; } else this.cur.lerp(want, Math.min(1, dt * 3));
     this.cam.position.copy(this.cur);
     // shift the look target along the camera's right/up so the subject sits beside/above the menu panel

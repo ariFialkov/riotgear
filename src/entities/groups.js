@@ -52,7 +52,9 @@ export class Group {
     if (!this.quelled && this.initialCount > 0) {
       const alive = this.conscious().length;
       const pushedHome = this.faction === 'rioter' ? this.game.front.z < this.game.world.regroup.rioter.z + 6 : this.game.front.z > this.game.world.regroup.peacekeeper.z - 6;
-      if (alive <= Math.max(2, this.initialCount * 0.22) || pushedHome) { this.quelled = true; this.game.onGroupQuelled(this); }
+      // a group is quelled only after staying collapsed for a while (KO'd members get back up)
+      this.collapsedT = (alive <= Math.max(2, this.initialCount * 0.25) || pushedHome) ? (this.collapsedT || 0) + dt : 0;
+      if (this.collapsedT > 6) { this.quelled = true; this.game.onGroupQuelled(this); }
     }
   }
   autoStrategy() {

@@ -78,7 +78,7 @@ export const ARCHETYPES = {
   // NPC-only archetypes
   rioter_npc: {
     id: 'rioter_npc', faction: 'rioter', name: 'Rioter',
-    stats: { hp: 0.9, speed: 1.0, dmg: 0.9, mass: 1.0 }, build: 'standard', npc: true,
+    stats: { hp: 1.0, speed: 1.0, dmg: 0.9, mass: 1.0 }, build: 'standard', npc: true,
     projectiles: { rock: 3, molotov: 0 },
   },
   peacekeeper_npc: {

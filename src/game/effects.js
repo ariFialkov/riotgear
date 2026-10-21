@@ -136,7 +136,7 @@ export class Effects {
       const l = this.lights[i]; l.t -= dt; l.light.intensity *= 0.8;
       if (l.t <= 0) { this.scene.remove(l.light); this.lights.splice(i, 1); }
     }
-    this.flashLevel = Math.max(0, this.flashLevel - dt * 0.6);
+    this.flashLevel = Math.max(0, this.flashLevel - dt * 1.6);
     p.update(dt);
   }
   inGas(x, z) { for (const g of this.gases) if (Math.hypot(g.x - x, g.z - z) < g.mesh.scale.x) return true; return false; }

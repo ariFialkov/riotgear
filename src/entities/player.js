@@ -43,13 +43,18 @@ export class PlayerController {
       if (e.type === 'jump' && c.y <= 0.01 && !c.onRoof && !stunned) { c.vy = 7.2; c.ducking = false; }
       if (e.type === 'jump' && c.onRoof) { c.vy = 6; c.onRoof = null; c.falling = true; }
       if (e.type === 'duck') { c.ducking = !c.ducking; }
-      if (e.type === 'attack') this.attack();
-      if (e.type === 'throw') this.throw(e);
+      if (e.type === 'attack') { if (!this.attack()) this.queued = { e, t: 0 }; }
+      if (e.type === 'throw') { if (!this.throw(e)) this.queued = { e, t: 0 }; }
       if (e.type === 'abilityDown') this.abilityDown();
       if (e.type === 'abilityTap') this.abilityTap();
       if (e.type === 'abilityRelease') this.abilityRelease(e.held);
     }
-    if (c.ducking && c.moving && c.moveSpeed > 0.1) { /* keep ducking while moving slowly */ }
+    // input buffering: an attack/throw that arrived mid-animation fires as soon as the current action ends
+    if (this.queued) {
+      this.queued.t += dt;
+      const ok = this.queued.e.type === 'attack' ? this.attack() : this.throw(this.queued.e);
+      if (ok || this.queued.t > 0.6) this.queued = null;
+    }
     // held attack for continuous weapons
     if (inp.attackHeld && (c.weapon.mech === 'flurry' || c.weapon.mech === 'spray')) this.attack(true);
     // ability hold behaviours
@@ -62,15 +67,15 @@ export class PlayerController {
 
   attack(held = false) {
     const c = this.c, g = this.game;
-    if (c.attackCd > 0 || c.humanoid.busy || c.stun > 0 || c.carried || c.heldProp || c.climbing) return;
-    if (c.blocking) return;
+    if (c.attackCd > 0 || c.humanoid.busy || c.stun > 0 || c.carried || c.heldProp || c.climbing) return false;
+    if (c.blocking) return false;
     // face the nearest enemy in a wide cone in front so taps feel sticky
     const t = this.nearestInCone(c.reach + 1.2, 1.6);
     if (t) { c.faceTowards(t.pos.x, t.pos.z, 1, 1); }
     const dur = c.weapon.mech === 'flurry' ? 0.22 : c.weapon.mech === 'spray' ? 0.2 : Math.max(0.3, c.weapon.cooldown * 1.1);
     c.attackCd = c.weapon.cooldown;
     c.humanoid.play('attack', { dur, onHit: () => { if (c.alive) meleeStrike(g, c, { heldDown: held }); } });
-    g.hud.pulseAttack && g.hud.pulseAttack();
+    return true;
   }
   nearestInCone(range, arc) {
     const c = this.c; let best = null, bd = range; const f = c.forward();
@@ -84,10 +89,11 @@ export class PlayerController {
   }
   throw(e) {
     const c = this.c, g = this.game;
-    if (c.humanoid.busy || c.stun > 0 || c.carried || c.heldProp || c.climbing) return;
+    if (c.stun > 0 || c.carried || c.heldProp || c.climbing) return true; // drop silently
+    if (c.humanoid.busy) return false; // buffer it
     const types = c.faction === 'rioter' ? ['molotov', 'rock'] : ['flashbang', 'teargas'];
     const type = this.game.hud.selectedThrow && c.inventory[this.game.hud.selectedThrow] > 0 ? this.game.hud.selectedThrow : types.find((t) => c.inventory[t] > 0);
-    if (!type) { g.hud.toast('No projectiles. Find floating supplies.'); return; }
+    if (!type) { g.hud.toast('No projectiles. Find floating supplies.'); return true; }
     let dx, dz;
     if (e.forward) { const f = c.forward(); dx = f.x; dz = f.y; }
     else { // swipe vector in screen space -> world (screen up = camera forward)
@@ -101,6 +107,7 @@ export class PlayerController {
       const from = c.humanoid.handWorld(); from.y = Math.max(from.y, c.y + 1.5);
       g.projectiles.launchDir(type, c, from, dx, dz, power);
     } });
+    return true;
   }
 
   // ---- abilities ----

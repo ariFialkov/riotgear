@@ -48,6 +48,11 @@ export class Director {
     const p = this.progress;
     if (!this.ending && p >= 0.9) this.chooseEnding();
     if (this.ending) this.runEnding(dt);
+    // a real knockout/arrest close to the result IS the ending: let it land there
+    const pl = g.player;
+    if (pl && this.ending && !g.roundOver && pl.ko && !pl.knockedDownOnly && p >= 0.85) { g.money = this.o.payout; this.failsafe(); return; }
+    // an ending beat that refuses to land gets forced
+    if (this.ending && !g.roundOver && this.ending.t > 16 && p >= 0.85) { g.money = this.o.payout; this.failsafe(); return; }
     if (g.money >= this.o.payout - 1e-6 && !g.roundOver) {
       g.money = this.o.payout;
       // the number is final; wrap up with the chosen beat if it hasn't landed yet
@@ -57,7 +62,8 @@ export class Director {
   }
   chooseEnding() {
     const g = this.game, pl = g.player; if (!pl) { this.ending = { kind: 'whistle', t: 0 }; return; }
-    const winning = this.bias < -0.2 || (g.front.z * pl.dir) > 10 || g.enemyAliveRatio() < 0.35;
+    // decide from what is actually on screen: is the player's side pushing the line / thinning the enemy?
+    const winning = (g.front.z * pl.dir) > 3 || g.enemyAliveRatio() < 0.4;
     const r = g.rng.next();
     let kind;
     if (winning && r < 0.55) kind = pl.faction === 'peacekeeper' ? 'dispersed' : 'broken';

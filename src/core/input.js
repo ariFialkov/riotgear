@@ -40,7 +40,7 @@ export class Input {
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     c.addEventListener('pointerdown', (e) => {
       if (!this.enabled) return;
-      c.setPointerCapture(e.pointerId);
+      try { c.setPointerCapture(e.pointerId); } catch {}
       const joyZone = this.isTouch && e.clientX < innerWidth * 0.45 && e.clientY > innerHeight * 0.35;
       if (joyZone && !this.joy) { this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY }; this.hud?.joystick(true, e.clientX, e.clientY, 0, 0); return; }
       if (this.pointer) return;

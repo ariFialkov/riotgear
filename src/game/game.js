@@ -88,6 +88,8 @@ export class Game {
   enemyAliveRatio() { const e = this.characters.filter((c) => c.faction === this.enemyFaction); return e.filter((c) => c.alive).length / Math.max(1, e.length); }
   reinforce(faction, n) {
     const grp = this.groups.filter((g) => g.faction === faction && !g.quelled).sort((a, b) => a.conscious().length - b.conscious().length)[0]; if (!grp) return;
+    const present = this.characters.filter((c) => c.faction === faction && !c.removed && !c.arrested).length;
+    if (present + n > this.quality.bots[faction] * 1.25) return; // don't flood the map
     const zs = this.world.spawn[faction]; const rng = this.rng;
     for (let i = 0; i < n; i++) {
       const isBot = rng.chance(0.5);
@@ -309,7 +311,7 @@ export class Game {
       const gs = this.gasOwners[i]; gs.t -= dt; if (gs.t <= 0) { this.gasOwners.splice(i, 1); continue; }
       for (const c of this.characters) if (c.alive && !c.onRoof && c.faction !== (gs.owner?.faction || 'peacekeeper') && Math.hypot(c.pos.x - gs.x, c.pos.z - gs.z) < gs.r) {
         c.slow = Math.max(c.slow, 0.5); c.blind = Math.max(c.blind, 0.4);
-        c.hp -= 4.5 * dt; c.lastHitBy = gs.owner || c.lastHitBy; if (c.hp <= 0 && !c.ko) c.knockOut(gs.owner);
+        c.hp -= 2.5 * dt; c.lastHitBy = gs.owner || c.lastHitBy; if (c.hp <= 0 && !c.ko) c.knockOut(gs.owner);
         if (c.isPlayer) this.hud.gas(true);
       }
     }

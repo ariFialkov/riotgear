@@ -124,7 +124,7 @@ function decide(c) {
     if (c.throwTimer <= 0 || !t) { g.throwProp(c, t ? 1 : 0.5); }
     return;
   }
-  if (A === 'grenadier' && t && dT > 4 && dT < 22 && c.fireAmmo > 0 && rng.chance(0.35 * (s?.fire ?? 0.5) + 0.1)) {
+  if (A === 'grenadier' && t && dT > 4 && dT < 22 && c.fireAmmo > 0 && rng.chance(0.22 * (s?.fire ?? 0.5) + 0.05)) {
     c.faceTowards(t.pos.x, t.pos.z, 1, 1); g.fireGun(c, t);
     c.holdStill = dT < 16; return;
   }

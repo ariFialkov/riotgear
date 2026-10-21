@@ -85,7 +85,7 @@ export class HUD {
     } else {
       this.$('hud-money').textContent = `LINE ${Math.round(g.front.z * M_TO_FT)} ft`;
     }
-    if (this.flashV > 0) { this.flashV = Math.max(0, this.flashV - 0.02); this.$('ov-flash').style.opacity = this.flashV; }
+    if (this.flashV > 0) { this.flashV = Math.max(0, this.flashV - 0.05); this.$('ov-flash').style.opacity = this.flashV; }
   }
   refreshAmmo() {
     const pl = this.game?.player; if (!pl) return;
