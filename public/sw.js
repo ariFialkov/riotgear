@@ -1,6 +1,7 @@
 /* Riotgear service worker: app-shell precache + runtime cache for hashed assets. */
 const VERSION = 'riotgear-v1';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+// All paths are relative to the service worker's location so the app works at / or under /<repo>/.
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -26,9 +27,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req).then((res) => {
         const copy = res.clone();
-        caches.open(VERSION).then((c) => c.put('/index.html', copy));
+        caches.open(VERSION).then((c) => c.put('./index.html', copy));
         return res;
-      }).catch(() => caches.match('/index.html'))
+      }).catch(() => caches.match('./index.html'))
     );
     return;
   }
@@ -36,7 +37,7 @@ self.addEventListener('fetch', (event) => {
   // Everything else: cache first, then network (and cache it).
   event.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      if (res.ok && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/'))) {
+      if (res.ok && (url.pathname.includes('/assets/') || url.pathname.includes('/icons/'))) {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(req, copy));
       }

@@ -163,8 +163,8 @@ startLobby();
 requestAnimationFrame(frame);
 
 // PWA
-if ('serviceWorker' in navigator && location.protocol === 'https:' || location.hostname === 'localhost') {
-  addEventListener('load', () => navigator.serviceWorker?.register('/sw.js').catch(() => {}));
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  addEventListener('load', () => navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {}));
 }
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__installPrompt = e; if (mode === 'lobby') menu.render(); });
 // test hooks
