@@ -19,7 +19,7 @@ export class Particles {
     const m = new THREE.ShaderMaterial({
       uniforms: { map: { value: particleSprite() } },
       vertexShader: `attribute vec3 aColor; attribute float aSize; attribute float aAlpha; varying vec3 vC; varying float vA;
-        void main(){ vC=aColor; vA=aAlpha; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize = aSize * (300.0 / -mv.z); gl_Position=projectionMatrix*mv; }`,
+        void main(){ vC=aColor; vA=aAlpha; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize = min(aSize * (300.0 / -mv.z), 90.0); gl_Position=projectionMatrix*mv; }`,
       fragmentShader: `uniform sampler2D map; varying vec3 vC; varying float vA;
         void main(){ vec4 t=texture2D(map,gl_PointCoord); if(vA<=0.001) discard; gl_FragColor=vec4(vC, t.a*vA); }`,
       transparent: true, depthWrite: false, blending: THREE.NormalBlending,

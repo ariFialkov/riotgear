@@ -32,6 +32,10 @@ export class Character {
     this.moveSpeed = 0; this.moving = false; this.stance = 0;
     this.knockVel = new THREE.Vector2(); this.lastHitBy = null; this.kills = 0;
     this.aiTimer = this.rng.float(0, 0.3); this.target = null; this.desired = new THREE.Vector2(x, z);
+    this.vel = new THREE.Vector2(); this.stuckT = 0; this.lookYaw = 0;
+    // individuality: every bot moves, reacts and commits a little differently
+    const courageBase = { brawler: 0.9, instigator: 0.7, looter: 0.45, rioter_npc: 0.5, front_echelon: 0.85, snatch_squad: 0.8, commander: 0.7, grenadier: 0.4, peacekeeper_npc: 0.55 }[archetype] ?? 0.5;
+    this.traits = { speed: this.rng.float(0.86, 1.14), courage: Math.max(0.1, Math.min(1, courageBase + this.rng.float(-0.18, 0.18))), spacing: this.rng.float(0.95, 1.45), react: this.rng.float(0.1, 0.5), wanderPh: this.rng.float(0, 6.28), fidgetT: this.rng.float(2, 7), hurtAt: this.rng.float(0.28, 0.45) };
     this.reach = this.weapon.range + (this.arch.build === 'heavy' ? 0.15 : 0);
     this.conscious = true;
     this.fireAmmo = this.arch.gun ? 8 : 0; this.reloadT = 0;
@@ -127,6 +131,8 @@ export class Character {
     if (this.flash > 0) this.flash -= dt; if (this.attackCd > 0) this.attackCd -= dt;
     if (this.burn > 0) { this.burn -= dt; if (this.alive) { this.hp -= 4 * dt; if (this.hp <= 0) this.knockOut(this.lastHitBy); } if (this.rng.chance(0.4)) this.game.effects.p.emit(this.pos.x + this.rng.float(-0.3, 0.3), this.y + 1 + this.rng.float(0, 0.8), this.pos.z + this.rng.float(-0.3, 0.3), { vy: 2, color: '#ff8c1a', size: 0.5, life: 0.4 }); }
     if (this.reloadT > 0) { this.reloadT -= dt; if (this.reloadT <= 0) this.fireAmmo = 8; }
+    // catch your breath: slow recovery when nobody is in your face
+    if (this.alive && this.stance === 0 && this.burn <= 0 && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + (this.isPlayer ? 2.5 : 2) * dt);
     if (this.ko) {
       this.koTimer -= dt;
       if (this.koTimer <= 0 && !this.arrested) this.revive();
@@ -155,6 +161,7 @@ export class Character {
     H.update(dt, {
       speed: this.moveSpeed, moving: this.moving, duck: this.ducking, jumpY: 0, ko: this.ko, climbing: !!this.climbing,
       blocking: this.blocking, carrying: !!this.carried, holding: !!this.heldProp, stunned: this.stun > 0 && !this.ko, stance: this.stance,
+      lookYaw: this.lookYaw, hurt: this.hp < this.maxHp * 0.35,
     });
     if (this.heldProp) {
       const p = this.heldProp; p.group.position.set(this.pos.x, this.y + this.humanoid.height + 0.2, this.pos.z); p.group.rotation.y = this.yaw;

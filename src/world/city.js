@@ -80,6 +80,17 @@ export class World {
     }
     return best || { x, z };
   }
+  /** True when a character can walk straight from a to b without hitting anything (sampled). */
+  lineFree(x0, z0, x1, z1, radius = 0.35) {
+    const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz); if (l < 0.01) return true;
+    const n = Math.ceil(l / 0.7), px = -dz / l * radius, pz = dx / l * radius;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, x = x0 + dx * t, z = z0 + dz * t;
+      if (this.blockedAt(x, z) || this.blockedAt(x + px, z + pz) || this.blockedAt(x - px, z - pz)) return false;
+    }
+    return true;
+  }
+  reachable(field, x, z) { const [cx, cz] = this.cellOf(x, z); return field.dist[cz * this.cw + cx] >= 0; }
   /** Breadth-first distance field from a goal point over walkable coarse cells. */
   flowField(gx, gz) {
     const g = this.nearestWalkable(gx, gz, 16); const [sx, sz] = this.cellOf(g.x, g.z);
@@ -495,9 +506,12 @@ export class World {
     }
     // peacekeeper command post: vans parked across the north end of the plaza
     for (const x of [-9, 0, 9]) this.addProp('riotVan', x, 26 + rng.float(-1, 1), Math.PI / 2 + rng.float(-0.1, 0.1));
-    // crowd barriers at the plaza mouths (with gaps)
-    for (let x = -16; x <= 16; x += 2.4) { if (rng.chance(0.7)) this.addProp('barrier', x, this.plaza.z0 + 1.5 + rng.float(-0.3, 0.3), rng.float(-0.1, 0.1)); }
-    for (let z = this.plaza.z0 + 6; z < this.plaza.z1 - 4; z += 2.4) { if (rng.chance(0.5)) this.addProp('barrier', this.plaza.x0 + 1.5, z, Math.PI / 2); if (rng.chance(0.5)) this.addProp('barrier', this.plaza.x1 - 1.5, z, Math.PI / 2); }
+    // crowd barriers in short runs at the plaza mouths, leaving clear 4m+ gaps for people to pass
+    const run = (x, z, dx, dz, n) => { for (let i = 0; i < n; i++) this.addProp('barrier', x + dx * i * 2.25, z + dz * i * 2.25, dx ? rng.float(-0.08, 0.08) : Math.PI / 2); };
+    run(-16, this.plaza.z0 + 1.5, 1, 0, 3); run(-4, this.plaza.z0 + 1.5, 1, 0, 3); run(9, this.plaza.z0 + 1.5, 1, 0, 3);
+    run(-16, this.plaza.z1 - 1.5, 1, 0, 2); run(6, this.plaza.z1 - 1.5, 1, 0, 3);
+    run(this.plaza.x0 + 1.5, -18, 0, 1, 3); run(this.plaza.x0 + 1.5, 6, 0, 1, 3);
+    run(this.plaza.x1 - 1.5, -14, 0, 1, 3); run(this.plaza.x1 - 1.5, 12, 0, 1, 3);
     // benches on the avenue
     for (let i = 0; i < 10; i++) {
       const row = rng.pick(this.avenueCenters); const z = rng.float(row.z0 + 2, row.z1 - 2);

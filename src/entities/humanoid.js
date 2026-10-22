@@ -168,7 +168,7 @@ export class Humanoid {
   }
   get busy() { return !!this.action; }
 
-  update(dt, { speed = 0, moving = false, duck = false, jumpY = 0, ko = false, climbing = false, blocking = false, carrying = false, holding = false, stunned = false, stance = 0 } = {}) {
+  update(dt, { speed = 0, moving = false, duck = false, jumpY = 0, ko = false, climbing = false, blocking = false, carrying = false, holding = false, stunned = false, stance = 0, lookYaw = 0, hurt = false } = {}) {
     const lerp = (a, b, t) => a + (b - a) * Math.min(1, t);
     this.duck = lerp(this.duck, duck ? 1 : 0, dt * 8);
     this.fall = lerp(this.fall, ko ? 1 : 0, dt * (ko ? 4 : 2.5));
@@ -191,7 +191,9 @@ export class Humanoid {
     this.torso.rotation.x = 0.04 + 0.14 * run + duckBend * 0.35;
     this.torso.rotation.y = moving ? c * 0.08 * run : 0;
     this.torso.rotation.z = 0;
-    this.head.rotation.set(0, 0, 0);
+    this.lookY = lerp(this.lookY || 0, Math.max(-0.9, Math.min(0.9, lookYaw)), dt * 4);
+    this.head.rotation.set(0, this.lookY, 0);
+    if (hurt && !ko) { this.torso.rotation.x += 0.25; this.body.position.y -= 0.06; }
     // arms default: swing with walk
     let arx = -s * amp * 0.8, alx = s * amp * 0.8, ary = 0, aly = 0, arz = 0.08, alz = -0.08;
     if (this.weaponId && !moving) { arx = -0.25; arz = 0.25; }
@@ -240,6 +242,10 @@ export class Humanoid {
         case 'loot': arx = -0.9; this.torso.rotation.x = 0.6 * Math.sin(u * Math.PI); break;
         case 'rally': arx = -3.0; alx = -2.6; aly = -0.3; ary = 0.3; this.torso.rotation.x = -0.15; this.head.rotation.x = -0.4; break;
         case 'hurt': this.torso.rotation.x = -0.3 * Math.sin(u * Math.PI); arx = -0.6; alx = -0.6; break;
+        case 'taunt': arx = -2.8 + Math.sin(a.t * 14) * 0.25; alx = -0.3; this.torso.rotation.y = Math.sin(a.t * 7) * 0.15; this.head.rotation.x = -0.2; break;
+        case 'beckon': arx = -1.6 + Math.sin(a.t * 10) * 0.5; ary = 0.4; this.torso.rotation.y = 0.2; break;
+        case 'lookaround': this.head.rotation.y = Math.sin(u * Math.PI * 2) * 0.7; this.torso.rotation.y = Math.sin(u * Math.PI * 2) * 0.12; break;
+        case 'shift': this.torso.rotation.z = Math.sin(u * Math.PI) * 0.06; this.body.position.y -= Math.sin(u * Math.PI) * 0.04; break;
         default: break;
       }
       if (u >= 1) { this.action = null; this.armR.position.z = 0; this.armL.position.z = 0; }

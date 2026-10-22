@@ -36,7 +36,7 @@ export class Game {
       this.outcome = rollOutcome(hashString('outcome:' + seed), sel.stake);
       this.director = new Director(this, this.outcome);
       const home = this.groups.filter((g) => g.faction === sel.faction)[0];
-      const W = this.world, sp = W.nearestWalkable(home.spawn.x + this.rng.float(-3, 3), home.spawn.z + this.rng.float(-3, 3), 8);
+      const W = this.world, sp = this.placeNear(home.spawn, 3);
       const yaw = Math.atan2(W.center.x - sp.x, W.center.z - sp.z) + (sel.faction === 'rioter' ? 0 : Math.PI);
       this.player = new Character(this, { archetype: sel.archetype, weaponId: sel.weapon, isPlayer: true, x: sp.x, z: sp.z, yaw, name: 'You', bandana: '#ff2d55' });
       this.addCharacter(this.player);
@@ -65,6 +65,12 @@ export class Game {
   // ---------- setup ----------
   spawnGroups() {
     const rng = this.rng.fork('spawn'), q = this.quality.bots, W = this.world;
+    const coreField = W.flowField(W.center.x, W.center.z);
+    const place = (sp, spread) => { // a walkable spot near sp that can reach the core
+      for (let i = 0; i < 10; i++) { const p = W.nearestWalkable(sp.x + rng.float(-spread, spread), sp.z + rng.float(-spread, spread), 10); if (W.reachable(coreField, p.x, p.z)) return p; }
+      return W.nearestWalkable(sp.x, sp.z, 20);
+    };
+    this.placeNear = place;
     const mk = (faction, count, spawns, sectors) => {
       const arches = FACTIONS[faction].archetypes, npc = FACTIONS[faction].npcArchetype;
       spawns.forEach((sp, gi) => {
@@ -74,7 +80,7 @@ export class Game {
           const isBot = rng.chance(faction === 'rioter' ? 0.42 : 0.8);
           const archetype = isBot ? rng.pick(arches) : npc;
           const weapons = WEAPONS[faction]; const w = isBot ? rng.pick(weapons.slice(0, 4)).id : weapons[0].id;
-          const p = W.nearestWalkable(sp.x + rng.float(-7, 7), sp.z + rng.float(-7, 7), 10);
+          const p = place(sp, 7);
           const yaw = Math.atan2(W.center.x - p.x, W.center.z - p.z) + (faction === 'rioter' ? 0 : Math.PI);
           const c = new Character(this, { archetype, weaponId: w, x: p.x, z: p.z, yaw, bandana: isBot ? null : undefined, name: isBot ? botName(rng) : null });
           if (c.arch.smokestick) this.effects.smokeStick(c.humanoid.smokeTip, rng.pick(['#ff2d55', '#2e7dff', '#ffb02e', '#7cff2e']));
@@ -115,7 +121,7 @@ export class Game {
     const q = this.spawnQueue; if (!q || !q.length) return;
     const { faction, grp } = q.shift(); const rng = this.rng, W = this.world;
     const isBot = rng.chance(0.5);
-    const p = W.nearestWalkable(grp.spawn.x + rng.float(-6, 6), grp.spawn.z + rng.float(-6, 6), 10);
+    const p = this.placeNear(grp.spawn, 6);
     const c = new Character(this, { archetype: isBot ? rng.pick(FACTIONS[faction].archetypes) : FACTIONS[faction].npcArchetype, weaponId: rng.pick(WEAPONS[faction].slice(0, 3)).id, x: p.x, z: p.z, yaw: Math.atan2(W.center.x - p.x, W.center.z - p.z), name: isBot ? botName(rng) : null });
     this.addCharacter(c); grp.add(c);
   }

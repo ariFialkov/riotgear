@@ -14,7 +14,8 @@ export class Group {
     this.strategyTimer = game.rng.float(10, 25); this.sectorTimer = game.rng.float(20, 35); this.leadT = 0;
     this.phase = faction === 'rioter' ? 'loot' : 'advance';
     this.phaseT = faction === 'rioter' ? game.rng.float(18, 38) : 0;
-    this.goal = { x: spawn.x, z: spawn.z }; this.field = null; this.fieldT = 0; this.spreadHalf = 6;
+    this.goal = { x: spawn.x, z: spawn.z }; this.target = { x: spawn.x, z: spawn.z }; this.field = null; this.fieldT = 0; this.spreadHalf = 6;
+    this.routeField = null; this.routeT = 0; this.centroid = { x: spawn.x, z: spawn.z };
     if (faction === 'rioter') this.setStrategy('scorched');
   }
   add(c) { c.group = this; this.members.push(c); this.initialCount++; this.assignSlots(); }
@@ -72,13 +73,43 @@ export class Group {
     if (!this.strategy.regroup && !this.commander?.isPlayer && this.phase !== 'loot') {
       const r = this.frontR(), n = g.fronts.length;
       for (const j of [(this.sector + n - 1) % n, (this.sector + 1) % n]) {
-        const dr = (g.fronts[j].r - r) * (this.faction === 'rioter' ? 1 : -1); // positive = the enemy is deeper there
-        if (dr > 22 && g.rng.chance(dt * 0.25)) { this.setStrategy(this.faction === 'rioter' ? 'retreat' : 'fallback'); g.hud.feed(`${this.name} flanked, falling back`); }
+        const rj = g.fronts[j].r;
+        // flanked only when the neighbouring approach has genuinely been pushed into our ground, not just
+        // because we advanced further than they did
+        const flanked = this.faction === 'rioter' ? (rj > g.world.R0 + 12 && rj - r > 22) : (rj < g.world.R0 - 12 && r - rj > 22);
+        if (flanked && g.rng.chance(dt * 0.25)) { this.setStrategy(this.faction === 'rioter' ? 'retreat' : 'fallback'); g.hud.feed(`${this.name} flanked, falling back`); }
       }
     }
-    // goal + navigation field
-    const goal = this.computeGoal(); this.fieldT -= dt;
-    if (!this.field || Math.hypot(goal.x - this.goal.x, goal.z - this.goal.z) > 5 || this.fieldT <= 0) { this.goal = goal; this.field = W.flowField(goal.x, goal.z); this.fieldT = 3; }
+    // centroid of the conscious members
+    const m = this.conscious();
+    if (m.length) { this.centroid.x = m.reduce((a, c) => a + c.pos.x, 0) / m.length; this.centroid.z = m.reduce((a, c) => a + c.pos.z, 0) / m.length; }
+    // the group's goal flows along a street route towards where it wants to be, at a group pace,
+    // and waits when the body of the group falls behind. Members steer around the moving goal.
+    const want = this.computeGoal(); this.routeT -= dt; this.fieldT -= dt;
+    if (!this.routeField || Math.hypot(want.x - this.target.x, want.z - this.target.z) > 6 || this.routeT <= 0) {
+      let tgt = want;
+      for (let k = 0; k < 4; k++) { // make sure the destination is reachable from where the group is
+        const f = W.flowField(tgt.x, tgt.z);
+        if (W.reachable(f, this.centroid.x, this.centroid.z)) { this.routeField = f; break; }
+        const a = Math.atan2(tgt.z - W.center.z, tgt.x - W.center.x), r = Math.hypot(tgt.x - W.center.x, tgt.z - W.center.z);
+        tgt = W.nearestWalkable(W.center.x + Math.cos(a) * Math.max(10, r - 10), W.center.z + Math.sin(a) * Math.max(10, r - 10), 16);
+        if (k === 3) this.routeField = f;
+      }
+      this.target = tgt; this.routeT = 6;
+    }
+    const lag = Math.hypot(this.goal.x - this.centroid.x, this.goal.z - this.centroid.z);
+    const paceBase = this.faction === 'rioter' ? (this.strategy.column ? 2.6 : 2.1) : 1.3;
+    const pace = lag > 20 ? 0 : lag > 12 ? paceBase * 0.45 : paceBase;
+    let step = pace * dt;
+    while (step > 0.01) {
+      const wp = W.fieldNext(this.routeField, this.goal.x, this.goal.z);
+      const tx = wp ? wp.x : this.target.x, tz = wp ? wp.z : this.target.z;
+      const dx = tx - this.goal.x, dz = tz - this.goal.z, l = Math.hypot(dx, dz);
+      if (l < 0.05) break;
+      const mv = Math.min(step, l); this.goal.x += (dx / l) * mv; this.goal.z += (dz / l) * mv; step -= mv;
+      if (!wp) break;
+    }
+    if (!this.field || this.fieldT <= 0) { this.field = W.flowField(this.goal.x, this.goal.z); this.fieldT = 0.6; }
     // quelled / fallen back
     if (!this.quelled && this.initialCount > 0) {
       const alive = this.conscious().length;
@@ -107,7 +138,7 @@ export class Group {
       let score;
       if (this.faction === 'rioter') score = (enemy === 0 ? 12 : 0) - enemy * 1.5 - own * 0.8 - angDist * 3.5 + (W.R0 - g.fronts[k].r) * 0.1;
       else score = enemy * 2.0 - own * 1.6 + (g.fronts[k].r - W.R0) * -0.08;
-      if (k === this.sector && !initial) score += 8;
+      if (k === this.sector && !initial) score += this.faction === 'rioter' ? 8 : 13;
       score += rng.float(-2, 2);
       if (score > bestScore) { bestScore = score; best = k; }
     }
@@ -117,12 +148,16 @@ export class Group {
     const rng = this.game.rng, bias = this.game.biasFor(this.faction);
     const alive = this.conscious().length / Math.max(1, this.initialCount);
     const pool = [];
+    // retreating only makes sense when the group is actually in the fight (near the perimeter)
+    const nearAction = Math.abs(this.game.world.distToCenter(this.centroid.x, this.centroid.z) - this.frontR()) < 25;
     if (this.faction === 'peacekeeper') {
       if (bias > 0.3) pool.push('breakout', 'pulse', 'slow_advance'); else if (bias < -0.3) pool.push('collapse_wall', 'anchor_lob', 'fallback'); else pool.push('slow_advance', 'anchor_lob', 'pulse', 'collapse_wall');
       if (alive < 0.4 && bias < 0) pool.push('fallback', 'fallback');
+      if (!nearAction) { for (let i = pool.length - 1; i >= 0; i--) if (pool[i] === 'fallback') pool.splice(i, 1); if (!pool.length) pool.push('slow_advance'); }
     } else {
       if (bias > 0.3) pool.push('blitz', 'shelling', 'scorched'); else if (bias < -0.3) pool.push('retreat', 'highground', 'shelling'); else pool.push('shelling', 'highground', 'blitz', 'countersnatch', 'scorched');
       if (alive < 0.4 && bias < 0) pool.push('retreat', 'retreat');
+      if (!nearAction) { for (let i = pool.length - 1; i >= 0; i--) if (pool[i] === 'retreat') pool.splice(i, 1); if (!pool.length) pool.push('shelling'); }
     }
     this.setStrategy(rng.pick(pool));
   }

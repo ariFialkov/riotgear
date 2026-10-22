@@ -61,6 +61,7 @@ export class PlayerController {
     if (inp.attackHeld && (c.weapon.mech === 'flurry' || c.weapon.mech === 'spray')) this.attack(true);
     // ability hold behaviours
     if (inp.abilityDown) this.abilityHeld(dt);
+    c.stance = this.nearestInCone(8, 6.3) ? 1 : 0;
     // auto pickup collectibles
     for (const col of g.world.collectibles) if (col.alive && Math.hypot(col.x - c.pos.x, col.z - c.pos.z) < 1.3 && Math.abs(c.y) < 1) g.pickupCollectible(c, col);
     // snatch: auto-arrest when we're well behind our line with someone carried
