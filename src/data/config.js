@@ -159,7 +159,7 @@ export const STRATEGIES = {
 // Money awarded per event, expressed as multiples of the stake. All rewards scale with stake so the
 // RTP distribution is stake-independent.
 export const ECONOMY = {
-  perSecondAlive: 0.012,
+  perSecondAlive: 0.005,
   perFtAdvance: 0.006,        // player's own distance past the original line
   perFtLinePush: 0.004,       // mob/squad line pushed past the original line (new ground only)
   knockout: 0.18,

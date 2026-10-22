@@ -2,22 +2,22 @@
 // The whole round then exists to make this number arrive on screen in a believable way.
 //
 // Multiplier distribution (of the stake), tuned to a 96% return-to-player:
-//   bust     0.05–0.55x   50%
-//   even-ish 0.55–1.30x   35.5%
-//   good     1.30–4.00x   11.5%
-//   big      4.00–12.0x   2.7%
-//   huge    12.0–50.0x    0.3%
+//   bust     0.10–0.55x   46.3%
+//   even-ish 0.55–1.25x   40.6%
+//   good     1.25–4.00x   10.5%
+//   big      4.00–12.0x   2.2%
+//   huge    12.0–50.0x    0.4%
 
 import { RNG } from '../core/rng.js';
 
 export const RTP = 0.96;
 
 const BANDS = [
-  { p: 0.500, lo: 0.05, hi: 0.55, curve: 1.0 },
-  { p: 0.355, lo: 0.55, hi: 1.30, curve: 1.0 },
-  { p: 0.115, lo: 1.30, hi: 4.00, curve: 2.2 },
-  { p: 0.027, lo: 4.00, hi: 12.0, curve: 2.6 },
-  { p: 0.003, lo: 12.0, hi: 50.0, curve: 3.0 },
+  { p: 0.4634, lo: 0.10, hi: 0.55, curve: 1.0 },
+  { p: 0.4056, lo: 0.55, hi: 1.25, curve: 1.0 },
+  { p: 0.105,  lo: 1.25, hi: 4.00, curve: 2.2 },
+  { p: 0.022,  lo: 4.00, hi: 12.0, curve: 2.6 },
+  { p: 0.004,  lo: 12.0, hi: 50.0, curve: 3.0 },
 ];
 
 export function bandMean(b) {
@@ -43,8 +43,9 @@ export function rollOutcome(seed, stake) {
   const payout = Math.round(stake * multiplier * 100) / 100;
   // Expected round length: busts end fast; big wins run long. Small randomness so the same
   // multiplier does not always take the same time.
-  const base = 28 + 22 * Math.log1p(multiplier * 2.2) * 2.2;
-  const durationSec = Math.max(22, Math.min(300, base * rng.float(0.85, 1.15)));
+  // Every round gets at least about a minute of play; bigger results run longer.
+  const base = 55 + 30 * Math.log1p(multiplier * 3);
+  const durationSec = Math.max(50, Math.min(300, base * rng.float(0.9, 1.12)));
   return { multiplier, payout, bandIndex, durationSec, seed };
 }
 

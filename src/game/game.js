@@ -35,6 +35,10 @@ export class Game {
       this.stake = sel.stake;
       this.outcome = rollOutcome(hashString('outcome:' + seed), sel.stake);
       this.director = new Director(this, this.outcome);
+      // Hidden pace: all earnings in a round are scaled so that natural play lands near the result
+      // around the intended duration, so the director only has to nudge rather than wrench.
+      const T = this.outcome.durationSec, natural = ECONOMY.perSecondAlive * T + 0.0045 * T;
+      this.payScale = Math.max(0.15, Math.min(12, this.outcome.multiplier / natural));
       const home = this.groups.filter((g) => g.faction === sel.faction)[0];
       const W = this.world, sp = this.placeNear(home.spawn, 3);
       const yaw = Math.atan2(W.center.x - sp.x, W.center.z - sp.z) + (sel.faction === 'rioter' ? 0 : Math.PI);
@@ -129,9 +133,14 @@ export class Game {
     const types = near.faction === 'rioter' ? ['rock', 'rock', 'molotov'] : ['teargas', 'flashbang'];
     for (let i = 0; i < 2; i++) this.world.spawnCollectible(this.rng.pick(types), near.pos.x + this.rng.float(-8, 8), near.pos.z + this.rng.float(-8, 8));
   }
+  /** The nearest enemies drop what they're doing and come for the player (overrun ending). */
+  sendMobFor(pl) {
+    const s = this.characters.filter((c) => c.alive && c.faction !== pl.faction && !c.onRoof && c.distTo(pl) < 45).sort((a, b) => a.distTo(pl) - b.distTo(pl)).slice(0, 6);
+    for (const c of s) { c.hunting = pl; c.huntT = 25; }
+  }
   sendSnatchFor(pl) {
     const s = this.characters.filter((c) => c.alive && c.faction !== pl.faction && c.arch.id === 'snatch_squad').sort((a, b) => a.distTo(pl) - b.distTo(pl)).slice(0, 2);
-    for (const c of s) { c.snatching = true; c.target = pl; c.snatchCd = 0; }
+    for (const c of s) { c.snatching = true; c.target = pl; c.snatchCd = 0; c.hunting = pl; c.huntT = 30; }
   }
   lobAt(pl, type) {
     const thrower = this.characters.filter((c) => c.alive && c.faction !== pl.faction && c.distTo(pl) > 6 && c.distTo(pl) < 30).sort((a, b) => a.distTo(pl) - b.distTo(pl))[0];
@@ -163,7 +172,10 @@ export class Game {
   award(amount, label, kind = 'money') {
     if (this.roundOver || !this.player || amount <= 0) return;
     const target = this.outcome.payout;
-    const add = Math.min(amount * this.stake, target - this.money);
+    if (this.director?.frozen) return;
+    // while the ending beat plays out, income slows so the finish has time to land naturally
+    const damp = this.director?.ending ? 0.35 : 1;
+    const add = Math.min(amount * this.stake * (this.payScale || 1) * damp, target - this.money);
     this.money += add;
     if (label) this.hud.popup(label, add);
   }

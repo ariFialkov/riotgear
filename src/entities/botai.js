@@ -164,10 +164,17 @@ function decide(c) {
     if (!s?.climb || s.climb < 0.3) { if (rng.chance(0.05)) startDescend(c); }
     return;
   }
-  const t = nearestEnemy(c, 30); c.target = t;
+  if (c.huntT > 0) { c.huntT -= DECIDE; if (c.huntT <= 0 || !c.hunting?.alive) c.hunting = null; }
+  const t = c.hunting && c.hunting.alive && !c.hunting.carriedBy ? c.hunting : nearestEnemy(c, 30); c.target = t;
   const dT = t ? c.distTo(t) : 1e9;
   if (t && dT < 7) c.stance = 1;
   const looting = grp?.phase === 'loot';
+  // hunting the player for the ending beat: close in and keep swinging, no formation, no fear
+  if (c.hunting && t === c.hunting && c.arch.id !== 'snatch_squad') {
+    c.engage = true;
+    if (dT < c.reach + t.radius + 0.1) { c.holdStill = true; attack(c); } else setDesired(t.pos.x, t.pos.z, true);
+    return;
+  }
   const hurt = c.hp < c.maxHp * T.hurtAt;
 
   // formation slot around the group's goal (rows behind the goal, spread sideways), with personal drift
@@ -198,11 +205,12 @@ function decide(c) {
   if (A === 'snatch_squad' && t && (s?.snatch ?? 0.3) > 0.15) {
     const inside = -g.beyond(t);
     const playerOk = !t.isPlayer || g.director?.ending || (g.director?.progress ?? 0) > 0.88;
-    const wantSnatch = playerOk && !c.snatchCd && inside > -7 && dT < 9 && (s?.snatch ?? 0.3) * (0.5 + aggression) > rng.float(0, 0.9);
+    const hunting = c.hunting === t;
+    const wantSnatch = hunting || (playerOk && !c.snatchCd && inside > -7 && dT < 9 && (s?.snatch ?? 0.3) * (0.5 + aggression) > rng.float(0, 0.9));
     if (wantSnatch || c.snatching) {
       c.snatching = true; c.engage = true; setDesired(t.pos.x, t.pos.z, true);
       if (dT < 1.4 && !c.humanoid.busy) {
-        c.humanoid.play('grab', { dur: 0.7, variant: 'grab', onHit: () => { if (t.alive && c.distTo(t) < 1.8 && !t.carriedBy && !t.onRoof) g.grab(c, t); c.snatching = false; c.snatchCd = 6; } });
+        c.humanoid.play('grab', { dur: 0.7, variant: 'grab', onHit: () => { if (t.alive && c.distTo(t) < 1.8 && !t.carriedBy && !t.onRoof) g.grab(c, t); c.snatching = false; c.snatchCd = hunting ? 1 : 6; } });
       }
       return;
     }

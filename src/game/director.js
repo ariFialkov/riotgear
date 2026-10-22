@@ -46,19 +46,24 @@ export class Director {
 
     // ---- endings ----
     const p = this.progress;
-    if (!this.ending && p >= 0.9) this.chooseEnding();
+    if (!this.ending && p >= 0.8) this.chooseEnding();
     if (this.ending) this.runEnding(dt);
-    // a real knockout/arrest close to the result IS the ending: let it land there
     const pl = g.player;
-    if (pl && this.ending && !g.roundOver && pl.ko && !pl.knockedDownOnly && p >= 0.85) { g.money = this.o.payout; this.failsafe(); return; }
-    // an ending beat that refuses to land gets forced
-    if (this.ending && !g.roundOver && this.ending.t > 16 && p >= 0.85) { g.money = this.o.payout; this.failsafe(); return; }
+    // a real knockout/arrest close to the result IS the ending: let it land there
+    if (pl && this.ending && !g.roundOver && pl.ko && !pl.knockedDownOnly && !pl.carriedBy && p >= 0.8) { g.money = this.o.payout; this.finish(); return; }
+    // being dragged off by a snatch squad: let the arrest complete (it ends the round itself)
+    if (pl && pl.carriedBy && !g.roundOver) { g.money = Math.max(g.money, this.o.payout * 0.97); this.carriedT = (this.carriedT || 0) + dt; if (this.carriedT > 14) g.arrest(pl.carriedBy, pl); return; }
     if (g.money >= this.o.payout - 1e-6 && !g.roundOver) {
       g.money = this.o.payout;
-      // the number is final; wrap up with the chosen beat if it hasn't landed yet
       if (!this.ending) this.chooseEnding();
-      this.failsafe();
+      // the number is final: freeze it and give the beat a few more seconds to land on its own
+      if (!this.frozen) { this.frozen = true; this.frozenT = 0; }
+      this.frozenT += dt;
+      if (this.ending.kind === 'dispersed' || this.ending.kind === 'broken' || this.ending.kind === 'whistle') { this.finish(); return; }
+      if (this.frozenT > 6) this.failsafe();
     }
+    // an ending beat that refuses to land for a long time gets forced
+    if (this.ending && !g.roundOver && this.ending.t > 40 && p >= 0.8) { g.money = this.o.payout; this.failsafe(); }
   }
   chooseEnding() {
     const g = this.game, pl = g.player; if (!pl) { this.ending = { kind: 'whistle', t: 0 }; return; }
@@ -68,10 +73,12 @@ export class Director {
     const r = g.rng.next();
     let kind;
     if (winning && r < 0.55) kind = pl.faction === 'peacekeeper' ? 'dispersed' : 'broken';
-    else if (pl.faction === 'rioter' && r < 0.35) kind = 'snatched';
-    else if (r < 0.6) kind = 'overrun';
-    else if (r < 0.8) kind = pl.faction === 'rioter' ? 'gassed' : 'torched';
-    else kind = 'stray';
+    else {
+      // losing beats: mostly physical (beaten up / snatched), sometimes gas or fire, rarely a stray
+      const u = g.rng.next();
+      if (pl.faction === 'rioter') kind = u < 0.38 ? 'snatched' : u < 0.7 ? 'overrun' : u < 0.87 ? 'gassed' : 'stray';
+      else kind = u < 0.55 ? 'overrun' : u < 0.8 ? 'torched' : 'stray';
+    }
     this.ending = { kind, t: 0, done: false };
     g.log(`ending: ${kind} (bias ${this.bias.toFixed(2)})`);
   }
@@ -79,12 +86,15 @@ export class Director {
     const g = this.game, e = this.ending, pl = g.player; e.t += dt;
     if (!pl || g.roundOver) return;
     switch (e.kind) {
-      case 'overrun': // nearby enemies converge on the player, enemy side gets strong
-        g.playerThreat = 14; this.bias = Math.min(this.bias, -0.8);
+      case 'overrun': // nearby enemies converge on the player and beat them down
+        g.playerThreat = 18; this.bias = Math.min(this.bias, -0.8);
+        if (e.t > 1 && !e.sent) { e.sent = true; g.sendMobFor(pl); }
+        if (e.t > 10 && !e.sent2) { e.sent2 = true; g.sendMobFor(pl); }
         break;
       case 'snatched': {
-        g.playerThreat = 10; this.bias = Math.min(this.bias, -0.6);
+        g.playerThreat = 12; this.bias = Math.min(this.bias, -0.6);
         if (e.t > 1 && !e.sent) { e.sent = true; g.sendSnatchFor(pl); }
+        if (e.t > 12 && !e.sent2) { e.sent2 = true; g.sendSnatchFor(pl); }
         break;
       }
       case 'gassed': case 'torched': {
@@ -102,14 +112,31 @@ export class Director {
       default: break;
     }
   }
-  /** Money is at target: end now, with the most plausible beat for what's on screen. */
+  finish() {
+    const g = this.game, pl = g.player, e = this.ending;
+    if (!pl) { g.endRound('whistle'); return; }
+    if (pl.arrested) { g.endRound('arrested'); return; }
+    if (pl.carriedBy) return; // the arrest will end it
+    if (pl.ko) { g.endRound('ko'); return; }
+    g.endRound(e.kind === 'dispersed' || e.kind === 'broken' ? e.kind : 'whistle');
+  }
+  /** Money is at target and the beat hasn't landed: finish with whatever is most plausible right now. */
   failsafe() {
     const g = this.game, pl = g.player, e = this.ending;
     if (!pl) { g.endRound('whistle'); return; }
-    if (pl.ko || pl.arrested) { g.endRound(pl.arrested ? 'arrested' : 'ko'); return; }
+    if (pl.carriedBy) { g.arrest(pl.carriedBy, pl); return; }
+    if (pl.ko || pl.arrested) { this.finish(); return; }
     if (e.kind === 'dispersed' || e.kind === 'broken') { g.endRound(e.kind); return; }
-    // instant, plausible finisher: a stray rubber bullet / brick from above drops the player right now
+    const enemies = g.characters.filter((c) => c.alive && c.faction !== pl.faction).sort((a, b) => a.distTo(pl) - b.distTo(pl));
+    const near = enemies[0];
+    const snatcher = enemies.find((c) => c.arch.id === 'snatch_squad' && c.distTo(pl) < 9);
+    if (pl.faction === 'rioter' && snatcher) { g.grab(snatcher, pl); g.arrest(snatcher, pl); return; } // arrest ends the round
+    if (near && near.distTo(pl) < 5) { // the people on top of you finish it
+      near.faceTowards(pl.pos.x, pl.pos.z, 1, 1); near.humanoid.play('attack', { dur: 0.4 });
+      pl.takeHit(pl.hp + 1, near, 1.5); g.effects.hit(pl.pos.x, pl.y + 1.2, pl.pos.z, '#fff');
+      g.hud.toast(`${near.name} put you down`, 'bad'); g.endRound('ko'); return;
+    }
     g.strayShot(pl, true);
-    g.endRound(pl.faction === 'rioter' ? 'ko' : 'ko');
+    g.endRound('ko');
   }
 }
