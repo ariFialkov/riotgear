@@ -4,8 +4,8 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } }); 
 await page.addInitScript(() => localStorage.setItem('riotgear.v1', JSON.stringify({ faction: 'peacekeeper', archetype: 'commander', weaponTier: 0, balance: 1000 })));
 await page.goto('http://localhost:4173/', { waitUntil: 'load' }); await page.waitForTimeout(2500);
 await page.click('#btn-join'); await page.waitForTimeout(500);
-for (let t = 0; t <= 60; t += 15) {
-  const s = await page.evaluate(() => { const g = window.__game, W = g.world; const per = W.corridors.map((c, i) => ({ n: c.name, front: +g.fronts[i].z.toFixed(1), r: g.characters.filter((ch) => ch.alive && ch.faction === 'rioter' && W.corridorAt(ch.pos.x, ch.pos.z) === i).length, p: g.characters.filter((ch) => ch.alive && ch.faction === 'peacekeeper' && W.corridorAt(ch.pos.x, ch.pos.z) === i).length })); return { t: +g.time.toFixed(0), per, groups: g.groups.map((gr) => `${gr.name}:${gr.corridor}:${gr.strategy.id}:${gr.conscious().length}`), side: W.sideStreets.map((s) => +s.x.toFixed(0)) }; });
+for (let t = 0; t <= 90; t += 15) {
+  const s = await page.evaluate(() => { const g = window.__game, W = g.world; const per = g.fronts.map((f, k) => `${W.sectorName(k).slice(0, 2)}:${f.r.toFixed(0)}`); return { t: +g.time.toFixed(0), over: g.roundOver, per, groups: g.groups.map((gr) => { const m = gr.conscious(); const cx = m.reduce((a, c) => a + c.pos.x, 0) / (m.length || 1), cz = m.reduce((a, c) => a + c.pos.z, 0) / (m.length || 1); return `${gr.name}:${gr.phase}:s${gr.sector}:${gr.strategy.id}:${m.length}@(${cx.toFixed(0)},${cz.toFixed(0)})->(${gr.goal.x.toFixed(0)},${gr.goal.z.toFixed(0)})`; }), pl: [+g.player.pos.x.toFixed(0), +g.player.pos.z.toFixed(0)] }; });
   console.log(JSON.stringify(s));
   await page.evaluate(() => window.__step(15));
 }

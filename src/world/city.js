@@ -42,7 +42,96 @@ export class World {
       { id: 4, name: 'East Alley', x: this.sideStreets[3].x, half: this.sideStreets[3].w / 2 - 0.7 },
     ];
     this.avenueIndex = 2;
+    // Radial format: peacekeepers hold the core (the plaza) and expand outwards; mobs come in from the
+    // edges. The contested perimeter is tracked per angular sector around the centre.
+    this.center = { x: 0, z: 2 }; this.R0 = 40; this.SECTORS = 8;
     this.generate();
+    this.buildCoarse();
+  }
+  sectorOf(x, z) { const a = Math.atan2(z - this.center.z, x - this.center.x); return ((Math.round(a / (2 * Math.PI / this.SECTORS)) % this.SECTORS) + this.SECTORS) % this.SECTORS; }
+  sectorAngle(k) { return k * (2 * Math.PI / this.SECTORS); }
+  sectorName(k) { return ['East', 'South-East', 'South', 'South-West', 'West', 'North-West', 'North', 'North-East'][k]; }
+  /** A walkable point at radius r along sector k's bisector. */
+  sectorPoint(k, r) { const a = this.sectorAngle(k); return this.nearestWalkable(this.center.x + Math.cos(a) * r, this.center.z + Math.sin(a) * r, 16); }
+  distToCenter(x, z) { return Math.hypot(x - this.center.x, z - this.center.z); }
+
+  // ---------- coarse grid + flow fields (BFS from a goal) for street navigation ----------
+  buildCoarse() {
+    this.cs = 2; this.cw = this.gw / this.cs; this.cd = this.gd / this.cs;
+    this.walk = new Uint8Array(this.cw * this.cd);
+    for (let cz = 0; cz < this.cd; cz++) for (let cx = 0; cx < this.cw; cx++) {
+      const x = this.minX + cx * this.cs, z = this.minZ + cz * this.cs;
+      let free = 0; for (let dz = 0; dz < this.cs; dz++) for (let dx = 0; dx < this.cs; dx++) if (!this.blockedAt(x + dx + 0.5, z + dz + 0.5)) free++;
+      this.walk[cz * this.cw + cx] = free === this.cs * this.cs ? 1 : 0;
+    }
+  }
+  cellOf(x, z) { return [Math.max(0, Math.min(this.cw - 1, Math.floor((x - this.minX) / this.cs))), Math.max(0, Math.min(this.cd - 1, Math.floor((z - this.minZ) / this.cs)))]; }
+  cellCenter(cx, cz) { return { x: this.minX + (cx + 0.5) * this.cs, z: this.minZ + (cz + 0.5) * this.cs }; }
+  nearestWalkable(x, z, maxR = 10) {
+    if (!this.walk) return { x, z };
+    const [cx0, cz0] = this.cellOf(x, z);
+    if (this.walk[cz0 * this.cw + cx0]) return { x, z };
+    const rc = Math.ceil(maxR / this.cs);
+    let best = null, bd = 1e9;
+    for (let dz = -rc; dz <= rc; dz++) for (let dx = -rc; dx <= rc; dx++) {
+      const cx = cx0 + dx, cz = cz0 + dz; if (cx < 0 || cz < 0 || cx >= this.cw || cz >= this.cd) continue;
+      if (!this.walk[cz * this.cw + cx]) continue;
+      const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = this.cellCenter(cx, cz); }
+    }
+    return best || { x, z };
+  }
+  /** Breadth-first distance field from a goal point over walkable coarse cells. */
+  flowField(gx, gz) {
+    const g = this.nearestWalkable(gx, gz, 16); const [sx, sz] = this.cellOf(g.x, g.z);
+    const dist = new Int16Array(this.cw * this.cd).fill(-1);
+    const q = new Int32Array(this.cw * this.cd); let qh = 0, qt = 0;
+    const start = sz * this.cw + sx; dist[start] = 0; q[qt++] = start;
+    while (qh < qt) {
+      const i = q[qh++]; const cx = i % this.cw, cz = (i / this.cw) | 0, d = dist[i];
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dz) continue;
+        const nx = cx + dx, nz = cz + dz; if (nx < 0 || nz < 0 || nx >= this.cw || nz >= this.cd) continue;
+        const j = nz * this.cw + nx; if (!this.walk[j] || dist[j] >= 0) continue;
+        if (dx && dz && (!this.walk[cz * this.cw + nx] || !this.walk[nz * this.cw + cx])) continue; // no corner cutting
+        dist[j] = d + 1; q[qt++] = j;
+      }
+    }
+    return { dist, goal: g };
+  }
+  /** Next waypoint along a flow field from (x,z): the lowest-distance neighbour, two cells ahead. */
+  fieldNext(field, x, z) {
+    let [cx, cz] = this.cellOf(x, z);
+    let here = field.dist[cz * this.cw + cx];
+    if (here < 0) { const w = this.nearestWalkable(x, z, 8); [cx, cz] = this.cellOf(w.x, w.z); here = field.dist[cz * this.cw + cx]; if (here < 0) return null; }
+    if (here === 0) return null;
+    for (let step = 0; step < 2; step++) {
+      let bx = cx, bz = cz, bd = here;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = cx + dx, nz = cz + dz; if (nx < 0 || nz < 0 || nx >= this.cw || nz >= this.cd) continue;
+        const d = field.dist[nz * this.cw + nx]; if (d < 0 || d >= bd) continue;
+        if (dx && dz && (!this.walk[cz * this.cw + nx] || !this.walk[nz * this.cw + cx])) continue;
+        bd = d; bx = nx; bz = nz;
+      }
+      if (bd === here) break; cx = bx; cz = bz; here = bd; if (here === 0) break;
+    }
+    return this.cellCenter(cx, cz);
+  }
+  /** Well separated peripheral spawn spots for mobs: corners and mid-edges of the city, randomised. */
+  mobSpawnSpots(rng, n) {
+    const cands = [[-78, -118], [78, -118], [-78, 118], [78, 118], [-82, 0], [82, 0], [0, -124], [0, 124], [-50, -124], [50, 124], [-82, 60], [82, -60]];
+    rng.shuffle(cands);
+    const picked = [];
+    for (const [x, z] of cands) {
+      if (picked.length >= n) break;
+      const p = this.nearestWalkable(x + rng.float(-6, 6), z + rng.float(-6, 6), 20);
+      if (picked.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < 70)) continue;
+      // must be able to reach the core
+      const f = this.flowField(this.center.x, this.center.z); const [cx, cz] = this.cellOf(p.x, p.z);
+      if (f.dist[cz * this.cw + cx] < 0) continue;
+      picked.push(p);
+    }
+    while (picked.length < n) picked.push(this.nearestWalkable(rng.float(-80, 80), rng.pick([-118, 118]), 20));
+    return picked;
   }
   corridorX(i, z) { const c = this.corridors[i]; return c.avenue ? this.avenueCenterAt(z) : c.x; }
   corridorHalf(i, z) { const c = this.corridors[i]; return c.avenue ? this.avenueHalfAt(z) : c.half; }
@@ -385,6 +474,12 @@ export class World {
       if (rng.chance(0.5)) this.addProp('dumpster', row.cx + (rng.chance(0.5) ? -1 : 1) * (this.avenueHalf - 1.5), rng.float(row.z0 + 3, row.z1 - 3), 0);
       if (rng.chance(0.6)) this.addProp('streetSign', row.cx + (rng.chance(0.5) ? -1 : 1) * (this.avenueHalf - 0.6), rng.float(row.z0 + 3, row.z1 - 3), 0);
     }
+    // shopfront loot along the side streets (mobs loot the periphery before moving on the core)
+    for (const st of this.sideStreets) for (let z = -120; z < 120; z += rng.float(6, 11)) {
+      const side = rng.chance(0.5) ? -1 : 1; const x = st.x + side * (st.w / 2 - 1.1);
+      if (this.blockedAt(x, z)) continue;
+      this.addProp(rng.pick(['jewelryCase', 'artPiece', 'flowerPot', 'scooter', 'newspaperBox', 'trashCan', 'cafeTable', 'chair', 'bikeRack']), x, z, rng.float(0, 6.28));
+    }
     // side-street lampposts
     for (const st of this.sideStreets) for (let z = -120; z < 120; z += 18) if (!this.blockedAt(st.x - st.w / 2 + 0.7, z)) this.addProp('lamppost', st.x - st.w / 2 + 0.7, z + rng.float(-3, 3), Math.PI / 2);
     // cross-street furniture
@@ -398,11 +493,11 @@ export class World {
         this.addProp(type, x, zc + rng.float(-2, 2), rng.float(0, 6.28));
       }
     }
-    // peacekeeper vans behind their spawn
-    for (const x of [-7, 0, 7]) this.addProp('riotVan', x, 74 + rng.float(-2, 2), Math.PI / 2);
-    // crowd barriers near the line
-    for (let x = -14; x <= 14; x += 2.4) if (rng.chance(0.8)) this.addProp('barrier', x + rng.float(-0.2, 0.2), 3 + rng.float(-0.3, 0.3), rng.float(-0.1, 0.1));
-    for (let i = 0; i < 6; i++) this.addProp('barrier', rng.float(-30, 30), rng.float(-18, -6), rng.float(0, 6.28));
+    // peacekeeper command post: vans parked across the north end of the plaza
+    for (const x of [-9, 0, 9]) this.addProp('riotVan', x, 26 + rng.float(-1, 1), Math.PI / 2 + rng.float(-0.1, 0.1));
+    // crowd barriers at the plaza mouths (with gaps)
+    for (let x = -16; x <= 16; x += 2.4) { if (rng.chance(0.7)) this.addProp('barrier', x, this.plaza.z0 + 1.5 + rng.float(-0.3, 0.3), rng.float(-0.1, 0.1)); }
+    for (let z = this.plaza.z0 + 6; z < this.plaza.z1 - 4; z += 2.4) { if (rng.chance(0.5)) this.addProp('barrier', this.plaza.x0 + 1.5, z, Math.PI / 2); if (rng.chance(0.5)) this.addProp('barrier', this.plaza.x1 - 1.5, z, Math.PI / 2); }
     // benches on the avenue
     for (let i = 0; i < 10; i++) {
       const row = rng.pick(this.avenueCenters); const z = rng.float(row.z0 + 2, row.z1 - 2);

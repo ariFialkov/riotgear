@@ -44,40 +44,15 @@ export function updateBot(c, dt) {
 }
 
 /**
- * Street routing: corridors (avenue + side streets) are joined by cross streets. To reach a point in
- * another corridor a bot walks along its own corridor to a cross street on its side of the front,
- * along the cross street, then up the target corridor. Returns the next waypoint or null (go direct).
+ * Street navigation: each group keeps a BFS flow field to its goal over the walkable grid. Far from the
+ * goal a bot follows the field (through streets and around blocks); near it, it walks straight to its
+ * formation slot. Returns the next waypoint or null (go direct).
  */
 function route(c, tx, tz) {
-  const W = c.game.world, g = c.game;
-  const inPlaza = (x, z) => z > W.plaza.z0 && z < W.plaza.z1 && x > W.plaza.x0 && x < W.plaza.x1;
-  const here = W.corridorAt(c.pos.x, c.pos.z), target = W.corridorAt(tx, tz);
-  const crossHalf = W.crossStreetHalfAt(c.pos.z);
-  const onCross = crossHalf > 0 && !inPlaza(c.pos.x, c.pos.z);
-  const inCorridor = (i) => Math.abs(c.pos.x - W.corridorX(i, c.pos.z)) < W.corridorHalf(i, c.pos.z) + 1.5;
-  if (here === target && (inCorridor(target) || inPlaza(c.pos.x, c.pos.z))) {
-    // same corridor: look ahead along it so the winding avenue / corners are followed
-    if (Math.abs(tz - c.pos.z) > 7) {
-      const aheadZ = c.pos.z + Math.sign(tz - c.pos.z) * 9;
-      const cx = W.corridorX(target, aheadZ), half = W.corridorHalf(target, aheadZ) - 1;
-      const lane = Math.max(-half, Math.min(half, tx - W.corridorX(target, tz)));
-      return { x: cx + lane * 0.6, z: aheadZ };
-    }
-    return null;
-  }
-  if (onCross || (inPlaza(c.pos.x, c.pos.z) && !inPlaza(tx, tz) && target !== W.avenueIndex)) {
-    // travelling along a cross street (or across the plaza) towards the target corridor
-    if (inPlaza(c.pos.x, c.pos.z)) { // leave the plaza through the nearest cross street on our side
-      const cz = W.nearestCrossZ(c.pos.z, g.fronts[W.avenueIndex].z, -c.dir);
-      return { x: Math.max(W.plaza.x0 + 4, Math.min(W.plaza.x1 - 4, c.pos.x)), z: cz };
-    }
-    const cx = W.corridorX(target, c.pos.z);
-    if (Math.abs(cx - c.pos.x) < 1.5) return { x: cx, z: c.pos.z + Math.sign(tz - c.pos.z) * 6 };
-    return { x: cx, z: c.pos.z };
-  }
-  // in some corridor, need a cross street: pick the nearest one on our side of this corridor's front
-  const cz = W.nearestCrossZ(c.pos.z, g.fronts[here].z, -c.dir);
-  return { x: W.corridorX(here, cz), z: cz };
+  const W = c.game.world, grp = c.group;
+  const dGoal = grp ? Math.hypot(grp.goal.x - c.pos.x, grp.goal.z - c.pos.z) : 1e9;
+  if (grp && grp.field && dGoal > 14) return W.fieldNext(grp.field, c.pos.x, c.pos.z);
+  return null;
 }
 
 function decide(c) {
@@ -87,10 +62,11 @@ function decide(c) {
   c.engage = false; c.wantBlock = false; c.holdStill = false; c.stance = 0;
   // carrying someone (snatch): drag them behind our line
   if (c.carried) {
-    const ci = c.group ? c.group.corridor : world.corridorAt(c.pos.x, c.pos.z);
-    const homeZ = g.fronts[ci].z + c.dir * -8; // behind own line
-    c.desired.set(world.corridorX(ci, homeZ) + c.slot.sx * 2, homeZ);
-    if (Math.abs(c.pos.z - homeZ) < 2.5) g.arrest(c, c.carried);
+    // drag them back behind our line: inward for peacekeepers
+    let hx = world.center.x - c.pos.x, hz = world.center.z - c.pos.z; const hl = Math.hypot(hx, hz) || 1;
+    const home = world.nearestWalkable(c.pos.x + (hx / hl) * 10, c.pos.z + (hz / hl) * 10, 8);
+    c.desired.set(home.x, home.z);
+    if (g.beyond(c) < -7 || hl < 8) g.arrest(c, c.carried);
     return;
   }
   // pick up our own faction's collectibles when they're right there
@@ -100,8 +76,10 @@ function decide(c) {
   }
   // on a roof: hold position near the edge facing the enemy and throw
   if (c.onRoof) {
-    const r = c.onRoof; const edgeZ = c.dir > 0 ? r.z1 - 1 : r.z0 + 1;
-    c.desired.set(Math.max(r.x0 + 1, Math.min(r.x1 - 1, c.pos.x)), edgeZ);
+    const r = c.onRoof; const C = world.center;
+    const ex = C.x < r.x0 ? r.x0 + 1 : C.x > r.x1 ? r.x1 - 1 : Math.max(r.x0 + 1, Math.min(r.x1 - 1, c.pos.x));
+    const ez = C.z < r.z0 ? r.z0 + 1 : C.z > r.z1 ? r.z1 - 1 : Math.max(r.z0 + 1, Math.min(r.z1 - 1, c.pos.z));
+    c.desired.set(ex, ez);
     const t = nearestEnemy(c, 40); c.target = t;
     if (t && c.inventory.rock > 0 && rng.chance(0.45)) throwAt(c, 'rock', t);
     else if (t && c.inventory.molotov > 0 && rng.chance(0.15)) throwAt(c, 'molotov', t);
@@ -112,18 +90,20 @@ function decide(c) {
   const t = nearestEnemy(c, 30); c.target = t;
   const dT = t ? c.distTo(t) : 1e9;
   if (t && dT < 6) c.stance = 1;
-  const ci = grp ? grp.corridor : world.corridorAt(c.pos.x, c.pos.z);
-  const lineZ = grp ? grp.lineZ() : g.fronts[ci].z;
-  const slotZ = lineZ - c.dir * (c.slot.sz * 7 * (s?.depth ?? 1) + 0.5) + c.slot.jitter;
-  const halfW = world.corridorHalf(ci, slotZ), cxz = world.corridorX(ci, slotZ);
-  const slotX = cxz + c.slot.sx * Math.min(grp?.spreadHalf ?? 6, halfW) * (s?.spread ?? 1);
-  c.desired.set(Math.max(cxz - halfW, Math.min(cxz + halfW, slotX)), slotZ);
-  const frontHere = g.fronts[ci].z;
+  if (grp) {
+    // formation around the group's goal: rows behind the goal (away from the enemy), spread sideways
+    const F = grp.facing(); const px = -F.z, pz = F.x;
+    const spread = (grp.spreadHalf) * (s?.spread ?? 1), depth = c.slot.sz * 7 * (s?.depth ?? 1) + 0.5;
+    let sxp = grp.goal.x + px * c.slot.sx * spread - F.x * depth + px * c.slot.jitter * 0.3;
+    let szp = grp.goal.z + pz * c.slot.sx * spread - F.z * depth + pz * c.slot.jitter * 0.3;
+    const w = world.nearestWalkable(sxp, szp, 8); c.desired.set(w.x, w.z);
+  } else c.desired.set(c.pos.x, c.pos.z);
+  const looting = grp?.phase === 'loot';
 
   // --- archetype specials ---
   const A = c.arch.id;
   if (A === 'snatch_squad' && t && (s?.snatch ?? 0.3) > 0.15) {
-    const beyond = (t.pos.z - frontHere) * c.dir; // how far past the front the target is (negative = on their side)
+    const beyond = g.beyond(t) < 0 ? -g.beyond(t) : -g.beyond(t); // target depth into our ground (positive = inside our side)
     const playerOk = !t.isPlayer || g.director?.ending || (g.director?.progress ?? 0) > 0.88;
     const wantSnatch = playerOk && !c.snatchCd && beyond > -7 && dT < 9 && (s?.snatch ?? 0.3) * (0.5 + aggression) > rng.float(0, 0.9);
     if (wantSnatch || c.snatching) {
@@ -180,8 +160,8 @@ function decide(c) {
     }
   }
   // --- wrecking props (rioters in scorched mode, and idle npcs sometimes) ---
-  if (c.faction === 'rioter' && (s?.wreck || rng.chance(0.08)) && (!t || dT > 5)) {
-    const p = world.nearestProp(c.pos.x, c.pos.z, s?.wreck ? 9 : 4, (q) => q.kind !== 'fragile' && !q.indestructible && !q.held && q.alive);
+  if (c.faction === 'rioter' && (s?.wreck || looting || rng.chance(0.08)) && (!t || dT > 5)) {
+    const p = world.nearestProp(c.pos.x, c.pos.z, s?.wreck || looting ? 12 : 4, (q) => q.kind !== 'fragile' && !q.indestructible && !q.held && q.alive);
     if (p) {
       const dp = Math.hypot(p.x - c.pos.x, p.z - c.pos.z) - (p.radius || 0) * 0.5;
       if (dp < c.reach) { c.faceTowards(p.x, p.z, 1, 1); c.engage = true; c.desired.set(c.pos.x, c.pos.z); attack(c, true); }
@@ -192,7 +172,7 @@ function decide(c) {
   // --- melee engagement ---
   if (t) {
     const chase = 1.5 + aggression * 9 + (s?.scatter ? 10 : 0) + (s?.column ? 4 : 0);
-    const beyond = (c.pos.z - frontHere) * c.dir; // how far we are past the front
+    const beyond = g.beyond(c); // how far we are past the perimeter into enemy ground
     const maxBeyond = (s?.scatter ? 30 : s?.column ? 8 : 2.5 + aggression * 4) + (bias > 0 ? bias * 6 : 0);
     if (dT < c.reach + t.radius + 0.1) {
       c.engage = true; c.desired.set(c.pos.x, c.pos.z);
@@ -201,7 +181,7 @@ function decide(c) {
       else attack(c, false);
       return;
     }
-    if (dT < chase && (beyond < maxBeyond || (t.pos.z - frontHere) * c.dir < beyond)) {
+    if (dT < chase && (beyond < maxBeyond || g.beyond(t) < 0 || looting)) {
       c.engage = true; c.desired.set(t.pos.x, t.pos.z); return;
     }
   }
@@ -245,7 +225,7 @@ function nearestClimbable(c, maxD) {
   const w = c.game.world; let best = null, bd = maxD;
   for (const b of w.buildings) {
     if (!b.front || !b.climbable || !b.alive) continue;
-    if ((b.cz - c.game.frontAt(b.cx, b.cz)) * c.dir > 14) continue; // don't climb buildings deep in enemy territory
+    if (c.game.beyond({ pos: { x: b.cx, z: b.cz }, faction: c.faction }) > 14) continue; // don't climb deep in enemy ground
     const dx = Math.max(b.x0 - c.pos.x, 0, c.pos.x - b.x1), dz = Math.max(b.z0 - c.pos.z, 0, c.pos.z - b.z1);
     const d = Math.hypot(dx, dz) + (b.occupants || 0) * 6;
     if (d < bd) { bd = d; best = b; }

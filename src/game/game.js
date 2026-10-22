@@ -20,12 +20,13 @@ export class Game {
     this.seed = seed; this.rng = new RNG(seed); this.spectate = spectate; this.selection = selection;
     this.characters = []; this.groups = []; this.gasOwners = []; this.messages = [];
     this.time = 0; this.money = 0; this.roundOver = false; this.playerThreat = 0; this.debugLog = [];
-    this.fronts = null; // one contested line per corridor, created after the world
+    this.fronts = null; // contested perimeter radius per sector, created after the world
     this.stats = { advance: 0, linePush: 0, kos: 0, props: 0, loot: 0, quelled: 0, buildings: 0 };
     this.botApi = { startDescend };
     this.world = world || new World(scene, this.rng.fork('world'), quality);
     this.effects = new Effects(scene, this.rng.fork('fx'));
-    this.fronts = this.world.corridors.map(() => ({ z: 0, vel: 0 }));
+    this.fronts = Array.from({ length: this.world.SECTORS }, () => ({ r: this.world.R0, vel: 0 }));
+    this.R0 = this.world.R0;
     this.projectiles = new Projectiles(this);
     this.spawnGroups();
     if (!spectate) {
@@ -34,16 +35,15 @@ export class Game {
       this.stake = sel.stake;
       this.outcome = rollOutcome(hashString('outcome:' + seed), sel.stake);
       this.director = new Director(this, this.outcome);
-      const zs = this.world.spawn[sel.faction];
-      const pz = (zs.z0 + zs.z1) / 2 + 4 * FACTIONS[sel.faction].dir;
-      this.player = new Character(this, { archetype: sel.archetype, weaponId: sel.weapon, isPlayer: true, x: this.world.avenueCenterAt(pz) + this.rng.float(-2, 2), z: pz, yaw: sel.faction === 'rioter' ? 0 : Math.PI, name: 'You', bandana: '#ff2d55' });
+      const home = this.groups.filter((g) => g.faction === sel.faction)[0];
+      const W = this.world, sp = W.nearestWalkable(home.spawn.x + this.rng.float(-3, 3), home.spawn.z + this.rng.float(-3, 3), 8);
+      const yaw = Math.atan2(W.center.x - sp.x, W.center.z - sp.z) + (sel.faction === 'rioter' ? 0 : Math.PI);
+      this.player = new Character(this, { archetype: sel.archetype, weaponId: sel.weapon, isPlayer: true, x: sp.x, z: sp.z, yaw, name: 'You', bandana: '#ff2d55' });
       this.addCharacter(this.player);
-      const home = this.groups.filter((g) => g.faction === sel.faction).sort((a, b) => Math.abs(a.anchorX) - Math.abs(b.anchorX))[0];
       home.add(this.player);
       this.controller = new PlayerController(this, this.player, input, null);
       this.followCam = new FollowCamera(camera, this.world); this.controller.cam = this.followCam; this.followCam.snapTo(this.player);
       if (this.player.arch.smokestick) this.effects.smokeStick(this.player.humanoid.smokeTip, '#ff2d55');
-      this.startLineZ = this.player.pos.z;
     } else {
       this.playerFaction = 'rioter'; this.enemyFaction = 'peacekeeper'; this.player = null;
       this.spectateT = 0;
@@ -51,39 +51,44 @@ export class Game {
     this.lastFrontForPush = 0;
   }
 
-  /** The front line that matters to the player: their group's corridor (the avenue when spectating). */
-  get front() { const i = this.player?.group ? this.player.group.corridor : this.world.avenueIndex; return this.fronts[i]; }
-  frontAt(x, z) { return this.fronts[this.world.corridorAt(x, z)].z; }
-  meanFront() { return this.fronts.reduce((a, f) => a + f.z, 0) / this.fronts.length; }
+  /** The sector front that matters to the player (their group's approach). */
+  get front() { const k = this.player?.group ? this.player.group.sector : 0; return this.fronts[k]; }
+  frontAt(x, z) { return this.fronts[this.world.sectorOf(x, z)].r; }
+  meanFront() { return this.fronts.reduce((a, f) => a + f.r, 0) / this.fronts.length; }
+  /** How far (m) a character stands past the contested perimeter into enemy ground (negative = own side). */
+  beyond(c) { const d = this.world.distToCenter(c.pos.x, c.pos.z), r = this.frontAt(c.pos.x, c.pos.z); return c.faction === 'rioter' ? r - d : d - r; }
+  /** Ground taken by the player's group past the original perimeter (m). */
+  groupPush(grp) { const r = this.fronts[grp.sector].r; return grp.faction === 'rioter' ? Math.max(0, this.R0 - r) : Math.max(0, r - this.R0); }
+  playerAdvance() { const pl = this.player, d = this.world.distToCenter(pl.pos.x, pl.pos.z); return pl.faction === 'rioter' ? Math.max(0, this.R0 - d) : Math.max(0, d - this.R0); }
+  coreTaken() { return this.meanFront() < 14; }
 
   // ---------- setup ----------
   spawnGroups() {
-    const rng = this.rng.fork('spawn'), q = this.quality.bots;
-    const W = this.world, A = W.avenueIndex;
-    // groups start spread over the neighbourhood: two on the avenue, one on each inner side street
-    const mk = (faction, count, corridors, weights) => {
+    const rng = this.rng.fork('spawn'), q = this.quality.bots, W = this.world;
+    const mk = (faction, count, spawns, sectors) => {
       const arches = FACTIONS[faction].archetypes, npc = FACTIONS[faction].npcArchetype;
-      const zs = this.world.spawn[faction];
-      const total = weights.reduce((a, b) => a + b, 0);
-      corridors.forEach((ci, gi) => {
-        const grp = new Group(this, faction, gi, ci); this.groups.push(grp);
-        const n = Math.max(4, Math.round(count * weights[gi] / total));
+      spawns.forEach((sp, gi) => {
+        const grp = new Group(this, faction, gi, sp, sectors[gi]); this.groups.push(grp);
+        const n = Math.max(4, Math.round(count / spawns.length));
         for (let i = 0; i < n; i++) {
           const isBot = rng.chance(faction === 'rioter' ? 0.42 : 0.8);
           const archetype = isBot ? rng.pick(arches) : npc;
           const weapons = WEAPONS[faction]; const w = isBot ? rng.pick(weapons.slice(0, 4)).id : weapons[0].id;
-          const z = rng.float(zs.z0, zs.z1);
-          const half = W.corridorHalf(ci, z) - 0.5;
-          const c = new Character(this, { archetype, weaponId: w, x: W.corridorX(ci, z) + (ci === A ? (gi % 2 ? 4 : -4) : 0) + rng.float(-half * 0.6, half * 0.6), z, yaw: faction === 'rioter' ? 0 : Math.PI, bandana: isBot ? null : undefined, name: isBot ? botName(rng) : null });
+          const p = W.nearestWalkable(sp.x + rng.float(-7, 7), sp.z + rng.float(-7, 7), 10);
+          const yaw = Math.atan2(W.center.x - p.x, W.center.z - p.z) + (faction === 'rioter' ? 0 : Math.PI);
+          const c = new Character(this, { archetype, weaponId: w, x: p.x, z: p.z, yaw, bandana: isBot ? null : undefined, name: isBot ? botName(rng) : null });
           if (c.arch.smokestick) this.effects.smokeStick(c.humanoid.smokeTip, rng.pick(['#ff2d55', '#2e7dff', '#ffb02e', '#7cff2e']));
           this.addCharacter(c); grp.add(c);
         }
       });
     };
-    mk('rioter', q.rioter, [A, A, A - 1, A + 1], [1.3, 1.3, 0.8, 0.8]);
-    mk('peacekeeper', q.peacekeeper, [A, A, A - 1, A + 1], [1.3, 1.3, 0.8, 0.8]);
-    // uncommanded groups start with sensible strategies
-    for (const g of this.groups) g.setStrategy(g.faction === 'rioter' ? 'shelling' : 'slow_advance');
+    // squads: four posts in the plaza, each facing a quadrant of the city
+    const core = [[-12, -8], [12, -8], [-12, 14], [12, 14]].map(([x, z]) => W.nearestWalkable(W.center.x + x, W.center.z + z, 8));
+    mk('peacekeeper', q.peacekeeper, core, core.map((p) => W.sectorOf(p.x, p.z)));
+    // mobs: well separated edges of the city; they loot first, then choose an approach
+    const spots = W.mobSpawnSpots(rng, 4);
+    mk('rioter', q.rioter, spots, spots.map((p) => W.sectorOf(p.x, p.z)));
+    for (const g of this.groups) if (g.faction === 'peacekeeper') g.setStrategy('slow_advance');
   }
   addCharacter(c) { this.characters.push(c); this.scene.add(c.mesh); }
   removeCharacter(c) { c.removed = true; this.scene.remove(c.mesh); if (c.group) { const i = c.group.members.indexOf(c); if (i >= 0) c.group.members.splice(i, 1); } }
@@ -100,24 +105,23 @@ export class Game {
     const grp = this.groups.filter((g) => g.faction === faction && !g.quelled).sort((a, b) => a.conscious().length - b.conscious().length)[0]; if (!grp) return;
     const present = this.characters.filter((c) => c.faction === faction && !c.removed && !c.arrested).length;
     if (present + n > this.quality.bots[faction] * 1.25) return; // don't flood the map
-    const zs = this.world.spawn[faction]; const rng = this.rng;
+    const rng = this.rng;
     // building a character is not free (meshes + materials), so spawn one per frame instead of a burst
     this.spawnQueue = this.spawnQueue || [];
     for (let i = 0; i < n; i++) this.spawnQueue.push({ faction, grp });
-    this.hud.toast(faction === 'peacekeeper' ? 'Police reinforcements arriving' : 'More rioters pouring in from the side streets', faction === this.playerFaction ? 'good' : 'bad');
+    this.hud.toast(faction === 'peacekeeper' ? 'Police reinforcements at the command post' : 'More rioters pouring in from the edges', faction === this.playerFaction ? 'good' : 'bad');
   }
   processSpawnQueue() {
     const q = this.spawnQueue; if (!q || !q.length) return;
-    const { faction, grp } = q.shift(); const rng = this.rng, zs = this.world.spawn[faction];
+    const { faction, grp } = q.shift(); const rng = this.rng, W = this.world;
     const isBot = rng.chance(0.5);
-    const z = (faction === 'rioter' ? zs.z0 - 10 : zs.z1 + 10) + rng.float(-6, 6);
-    const half = this.world.corridorHalf(grp.corridor, z) - 0.5;
-    const c = new Character(this, { archetype: isBot ? rng.pick(FACTIONS[faction].archetypes) : FACTIONS[faction].npcArchetype, weaponId: rng.pick(WEAPONS[faction].slice(0, 3)).id, x: this.world.corridorX(grp.corridor, z) + rng.float(-half, half), z, yaw: faction === 'rioter' ? 0 : Math.PI, name: isBot ? botName(rng) : null });
+    const p = W.nearestWalkable(grp.spawn.x + rng.float(-6, 6), grp.spawn.z + rng.float(-6, 6), 10);
+    const c = new Character(this, { archetype: isBot ? rng.pick(FACTIONS[faction].archetypes) : FACTIONS[faction].npcArchetype, weaponId: rng.pick(WEAPONS[faction].slice(0, 3)).id, x: p.x, z: p.z, yaw: Math.atan2(W.center.x - p.x, W.center.z - p.z), name: isBot ? botName(rng) : null });
     this.addCharacter(c); grp.add(c);
   }
   dropSupply(near) {
     const types = near.faction === 'rioter' ? ['rock', 'rock', 'molotov'] : ['teargas', 'flashbang'];
-    for (let i = 0; i < 2; i++) this.world.spawnCollectible(this.rng.pick(types), near.pos.x + this.rng.float(-8, 8), near.pos.z + this.rng.float(-6, 6) + near.dir * 6);
+    for (let i = 0; i < 2; i++) this.world.spawnCollectible(this.rng.pick(types), near.pos.x + this.rng.float(-8, 8), near.pos.z + this.rng.float(-8, 8));
   }
   sendSnatchFor(pl) {
     const s = this.characters.filter((c) => c.alive && c.faction !== pl.faction && c.arch.id === 'snatch_squad').sort((a, b) => a.distTo(pl) - b.distTo(pl)).slice(0, 2);
@@ -132,7 +136,10 @@ export class Game {
   /** A stray rubber bullet (vs rioters) or a brick from a rooftop (vs peacekeepers). */
   strayShot(pl, instant = false) {
     const type = pl.faction === 'rioter' ? 'bullet' : 'rock';
-    const from = new THREE.Vector3(pl.pos.x + this.rng.float(-6, 6), pl.y + (type === 'rock' ? 9 : 1.2), pl.pos.z + pl.dir * (type === 'rock' ? 4 : 18));
+    const W = this.world; let tx = W.center.x - pl.pos.x, tz = W.center.z - pl.pos.z; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+    if (pl.faction === 'peacekeeper') { tx = -tx; tz = -tz; } // the enemy is outward for peacekeepers
+    const reach = type === 'rock' ? 4 : 18;
+    const from = new THREE.Vector3(pl.pos.x + tx * reach + this.rng.float(-4, 4), pl.y + (type === 'rock' ? 9 : 1.2), pl.pos.z + tz * reach + this.rng.float(-4, 4));
     const dir = new THREE.Vector3(pl.pos.x, pl.y + 1, pl.pos.z).sub(from);
     const shooter = this.characters.filter((c) => c.alive && c.faction !== pl.faction).sort((a, b) => a.distTo(pl) - b.distTo(pl))[0] || null;
     if (instant) {
@@ -296,28 +303,24 @@ export class Game {
     const W = this.world, n = this.fronts.length;
     const R = new Float32Array(n), P = new Float32Array(n);
     for (const c of this.characters) {
-      if (!c.alive || c.onRoof) continue;
-      const i = W.corridorAt(c.pos.x, c.pos.z); const fz = this.fronts[i].z;
-      const d = Math.abs(c.pos.z - fz); if (d > 16) continue;
+      if (!c.alive || c.onRoof || (c.group && c.group.phase === 'loot')) continue;
+      const k = W.sectorOf(c.pos.x, c.pos.z); const fr = this.fronts[k].r;
+      const d = Math.abs(W.distToCenter(c.pos.x, c.pos.z) - fr); if (d > 16) continue;
       const s = c.group?.strategy; const push = (s?.push ?? 0.5);
       let w = (1 - d / 16) * (0.5 + push) * c.strengthMult * (c.arch.build === 'heavy' ? 1.4 : 1);
       if (c.isPlayer) w *= 2.5;
-      if (c.faction === 'rioter') R[i] += w; else P[i] += w;
+      if (c.faction === 'rioter') R[k] += w; else P[k] += w;
     }
-    for (let i = 0; i < n; i++) {
-      const f = this.fronts[i];
-      let net = (R[i] - P[i]) * 0.06;
-      // an unguarded corridor is taken easily; a line flanked by a neighbour gives ground
-      if (R[i] > 0 && P[i] === 0) net += 0.8; if (P[i] > 0 && R[i] === 0) net -= 0.8;
-      for (const j of [i - 1, i + 1]) {
-        if (j < 0 || j >= n) continue;
-        const dz = this.fronts[j].z - f.z;
-        if (dz > 22) net += 0.15; if (dz < -22) net -= 0.15;
-      }
+    for (let k = 0; k < n; k++) {
+      const f = this.fronts[k];
+      let net = (P[k] - R[k]) * 0.06; // positive = perimeter grows outward (peacekeepers winning)
+      if (P[k] > 0 && R[k] === 0) net += 0.5; if (R[k] > 0 && P[k] === 0) net -= 0.8;
+      // an empty sector slowly relaxes back towards the core's natural perimeter
+      if (P[k] === 0 && R[k] === 0) net += (this.R0 - f.r) * 0.01;
+      for (const j of [(k + n - 1) % n, (k + 1) % n]) { const dr = this.fronts[j].r - f.r; if (dr < -22) net -= 0.15; if (dr > 22) net += 0.15; }
       const want = Math.max(-1.6, Math.min(1.6, net));
       f.vel += (want - f.vel) * Math.min(1, dt * 1.5);
-      f.z += f.vel * dt;
-      f.z = Math.max(W.regroup.rioter.z + 4, Math.min(W.regroup.peacekeeper.z - 4, f.z));
+      f.r = Math.max(8, Math.min(125, f.r + f.vel * dt));
     }
   }
 
@@ -352,9 +355,9 @@ export class Game {
     if (this.player && !this.roundOver) {
       const pl = this.player, dir = pl.dir;
       if (pl.alive) this.award(ECONOMY.perSecondAlive * dt, null);
-      const adv = Math.max(0, pl.pos.z * dir) * M_TO_FT;
+      const adv = this.playerAdvance() * M_TO_FT;
       if (adv > this.stats.advance) { this.award(ECONOMY.perFtAdvance * (adv - this.stats.advance), null); this.stats.advance = adv; }
-      const push = Math.max(0, this.front.z * dir) * M_TO_FT;
+      const push = (pl.group ? this.groupPush(pl.group) : 0) * M_TO_FT;
       if (push > this.stats.linePush) { this.award(ECONOMY.perFtLinePush * (push - this.stats.linePush), null); this.stats.linePush = push; }
       this.director.update(dt);
       if (pl.ko && !pl.arrested && pl.koTimer < 0.05 && !this.roundOver) this.hud.koOverlay(false);
@@ -364,13 +367,13 @@ export class Game {
     } else if (this.spectate) {
       this.spectateT += dt;
       const a = this.spectateT * 0.08;
-      const fz = this.fronts[this.world.avenueIndex].z;
-      this.camera.position.lerp(new THREE.Vector3(Math.cos(a) * 26, 14 + Math.sin(a * 0.7) * 3, fz + Math.sin(a) * 26), Math.min(1, dt * 1.5));
-      this.camera.lookAt(0, 1, fz);
+      const C = this.world.center, rr = Math.max(30, this.meanFront() + 10);
+      this.camera.position.lerp(new THREE.Vector3(C.x + Math.cos(a) * rr, 18 + Math.sin(a * 0.7) * 4 + rr * 0.25, C.z + Math.sin(a) * rr), Math.min(1, dt * 1.5));
+      this.camera.lookAt(C.x, 1, C.z);
       this.hud.update(this); this.hud.minimap?.update(this, dt);
     }
     // sun shadow follows the action
-    if (this.sun) { const fx = this.player ? this.player.pos : { x: 0, z: this.front.z }; this.sun.position.set(fx.x + 60, 90, fx.z + 30); this.sun.target.position.set(fx.x, 0, fx.z); this.sun.target.updateMatrixWorld(); }
+    if (this.sun) { const fx = this.player ? this.player.pos : this.world.center; this.sun.position.set(fx.x + 60, 90, fx.z + 30); this.sun.target.position.set(fx.x, 0, fx.z); this.sun.target.updateMatrixWorld(); }
   }
 
   endRound(reason) {

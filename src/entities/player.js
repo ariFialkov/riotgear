@@ -63,7 +63,7 @@ export class PlayerController {
     // auto pickup collectibles
     for (const col of g.world.collectibles) if (col.alive && Math.hypot(col.x - c.pos.x, col.z - c.pos.z) < 1.3 && Math.abs(c.y) < 1) g.pickupCollectible(c, col);
     // snatch: auto-arrest when we're well behind our line with someone carried
-    if (c.carried && (c.pos.z - g.frontAt(c.pos.x, c.pos.z)) * c.dir < -7) g.arrest(c, c.carried);
+    if (c.carried && g.beyond(c) < -7) g.arrest(c, c.carried);
   }
 
   attack(held = false) {

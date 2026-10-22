@@ -63,12 +63,13 @@ export class HUD {
     if (pl) {
       this.$('hud-arch').textContent = `${pl.arch.name} · ${pl.weapon.name}`;
       this.$('hud-arch').style.setProperty('--c', pl.faction === 'rioter' ? '#ff4d2e' : '#3d8bff');
-      this.$('hud-line-label').textContent = pl.faction === 'rioter' ? 'MOB LINE' : 'SQUAD LINE';
+      this.$('hud-line-label').textContent = pl.faction === 'rioter' ? 'MOB PUSH' : 'SQUAD PUSH';
       const a = pl.arch.ability; this.$('btn-ability').querySelector('small').textContent = a.tap !== '—' ? a.tap : a.hold;
       this.$('hud-hint').innerHTML = this.input.isTouch
         ? `Joystick to move · tap to strike · swipe to throw · <b>Z</b>: tap = ${a.tap} · hold = ${a.hold}`
         : `WASD move · click/X strike · click-drag or hold X throw · Space jump (2× duck) · <b>Z</b> tap = ${a.tap} · hold = ${a.hold} · Q/E camera`;
       setTimeout(() => this.$('hud-hint').classList.add('fade'), 9000);
+      setTimeout(() => this.toast(pl.faction === 'rioter' ? 'Your mob is looting this block. Wreck shops, then push for the plaza.' : 'Hold the plaza. Fan out and quell the mobs before they reach the core.', 'good'), 800);
     } else { this.$('hud-arch').textContent = 'SPECTATING'; this.$('hud-hint').textContent = ''; }
     this.$('hud-strategy').classList.add('hidden'); this.$('ov-ko').classList.add('hidden');
     this.refreshAmmo(); this.feedItems = []; this.$('hud-feed').innerHTML = ''; this.$('hud-popups').innerHTML = '';
@@ -80,13 +81,13 @@ export class HUD {
     if (pl) {
       this.$('hud-money').textContent = fmt(g.money);
       this.$('hud-adv').textContent = `${Math.round(g.stats.advance)} ft`;
-      this.$('hud-line').textContent = `${Math.round(Math.max(0, g.front.z * pl.dir) * M_TO_FT)} ft`;
+      this.$('hud-line').textContent = `${Math.round((pl.group ? g.groupPush(pl.group) : 0) * M_TO_FT)} ft`;
       this.$('hud-hp-bar').style.width = `${Math.max(0, pl.hp / pl.maxHp) * 100}%`;
       this.$('hud-hp-bar').style.background = pl.hp / pl.maxHp > 0.4 ? '#58d36c' : '#ff4d2e';
       if (pl.arch.gun) this.refreshAmmo();
       if (g.time - this.lastGasT > 0.3) this.$('ov-gas').style.opacity = 0;
     } else {
-      this.$('hud-money').textContent = `LINE ${Math.round(g.meanFront() * M_TO_FT)} ft`;
+      this.$('hud-money').textContent = `PERIMETER ${Math.round(g.meanFront() * M_TO_FT)} ft`;
     }
     if (this.flashV > 0) { this.flashV = Math.max(0, this.flashV - 0.05); this.$('ov-flash').style.opacity = this.flashV; }
   }
@@ -114,7 +115,7 @@ export class HUD {
   }
   strategy(grp, s) {
     const el = this.$('hud-strategy'); el.classList.remove('hidden');
-    el.innerHTML = `<span>${grp.name} · ${grp.corridorName.toUpperCase()} · COMMANDING</span><b>${s.name}</b><small>${s.desc}</small>`;
+    el.innerHTML = `<span>${grp.name} · ${grp.sectorName.toUpperCase()} · COMMANDING</span><b>${s.name}</b><small>${s.desc}</small>`;
   }
   charge(v, label = '') {
     const el = this.$('hud-charge');

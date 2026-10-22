@@ -63,7 +63,8 @@ export class Director {
   chooseEnding() {
     const g = this.game, pl = g.player; if (!pl) { this.ending = { kind: 'whistle', t: 0 }; return; }
     // decide from what is actually on screen: is the player's side pushing the line / thinning the enemy?
-    const winning = (g.meanFront() * pl.dir) > 3 || g.enemyAliveRatio() < 0.4;
+    const taken = pl.faction === 'rioter' ? g.R0 - g.meanFront() : g.meanFront() - g.R0;
+    const winning = taken > 5 || g.enemyAliveRatio() < 0.4;
     const r = g.rng.next();
     let kind;
     if (winning && r < 0.55) kind = pl.faction === 'peacekeeper' ? 'dispersed' : 'broken';

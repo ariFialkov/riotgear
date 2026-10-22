@@ -1,5 +1,5 @@
 // Minimap: streets/buildings from the collision grid, every mob and squad (player, bots, NPCs),
-// and the dynamic front line across all corridors. Oriented so the player's side is at the bottom.
+// and the contested perimeter around the core (one radius per sector). North is up.
 export class Minimap {
   constructor(canvas) {
     this.c = canvas; this.ctx = canvas.getContext('2d'); this.bg = null; this.acc = 0; this.world = null;
@@ -31,22 +31,24 @@ export class Minimap {
   }
   update(game, dt) {
     this.acc += dt; if (this.acc < 0.12) return; this.acc = 0;
-    if (!this.world || this.world !== game.world) this.setWorld(game.world, (game.player?.dir ?? 1) < 0);
+    if (!this.world || this.world !== game.world) this.setWorld(game.world, false);
     const ctx = this.ctx, W = this.world;
     ctx.drawImage(this.bg, 0, 0);
-    // original line
-    const [, ly] = this.toPx(0, 0); ctx.strokeStyle = 'rgba(255,230,80,.5)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(this.c.width, ly); ctx.stroke(); ctx.setLineDash([]);
-    // front line: one segment per corridor, joined
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.beginPath();
-    const pts = [];
-    game.fronts.forEach((f, i) => {
-      const cx = W.corridorX(i, f.z), h = W.corridorHalf(i, f.z);
-      const [x0, y] = this.toPx(cx - h, f.z), [x1] = this.toPx(cx + h, f.z);
-      pts.push([x0, y, x1]);
-    });
-    pts.forEach(([x0, y, x1], i) => { if (i === 0) ctx.moveTo(x0, y); else ctx.lineTo(x0, y); ctx.lineTo(x1, y); });
-    ctx.stroke();
+    const C = W.center;
+    // original perimeter (dashed) and the live contested perimeter (solid), one radius per sector
+    const poly = (radii, style, dash) => {
+      ctx.strokeStyle = style; ctx.setLineDash(dash); ctx.lineWidth = dash.length ? 1 : 2; ctx.beginPath();
+      const n = radii.length;
+      for (let i = 0; i <= n; i++) {
+        const k = i % n, a = W.sectorAngle(k); const [x, y] = this.toPx(C.x + Math.cos(a) * radii[k], C.z + Math.sin(a) * radii[k]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    };
+    poly(game.fronts.map(() => W.R0), 'rgba(255,230,80,.45)', [3, 3]);
+    poly(game.fronts.map((f) => f.r), '#ffffff', []);
+    // group goals
+    for (const g of game.groups) { if (g.quelled) continue; const [x, y] = this.toPx(g.goal.x, g.goal.z); ctx.fillStyle = g.faction === 'rioter' ? 'rgba(255,77,46,.35)' : 'rgba(61,139,255,.35)'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 6.28); ctx.fill(); }
     // characters
     for (const c of game.characters) {
       if (c.removed || c.arrested) continue;
