@@ -1,8 +1,9 @@
 // In-round HUD (DOM): money/time, distance, ammo, ability button, joystick, toasts, overlays, result screen.
 import { ARCHETYPES, PROJECTILES, M_TO_FT } from '../data/config.js';
 import { Minimap } from './minimap.js';
+import { ICONS, ABILITY_ICON, icon } from './icons.js';
 
-const fmt = (n) => '$' + n.toFixed(2);
+const fmt = (n) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export class HUD {
@@ -11,17 +12,17 @@ export class HUD {
     root.innerHTML = `
       <div class="hud-top">
         <div class="hud-left">
-          <div class="hud-chip" id="hud-arch"></div>
+          <div class="hud-chip" id="hud-arch"><i class="ico" id="hud-arch-ico"></i><span id="hud-arch-text"></span></div>
           <div class="hud-money" id="hud-money">$0.00</div>
-          <div class="hud-time" id="hud-time">0:00</div>
+          <div class="hud-time">${icon('clock')}<span id="hud-time">0:00</span></div>
           <div class="hud-popups" id="hud-popups"></div>
         </div>
         <div class="hud-right">
-          <div class="hud-stat"><span>YOU</span><b id="hud-adv">0 ft</b></div>
-          <div class="hud-stat"><span id="hud-line-label">MOB LINE</span><b id="hud-line">0 ft</b></div>
+          <div class="hud-stat">${icon('run')}<span>YOU</span><b id="hud-adv">0 ft</b></div>
+          <div class="hud-stat">${icon('line')}<span id="hud-line-label">MOB PUSH</span><b id="hud-line">0 ft</b></div>
           <div class="hud-ammo" id="hud-ammo"></div>
           <div class="hud-strategy hidden" id="hud-strategy"></div>
-          <canvas class="hud-minimap" id="hud-minimap" width="132" height="182"></canvas>
+          <div class="hud-map"><canvas class="hud-minimap" id="hud-minimap" width="132" height="182"></canvas><div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div></div>
         </div>
       </div>
       <div class="hud-hp"><div id="hud-hp-bar"></div></div>
@@ -32,13 +33,13 @@ export class HUD {
       <div class="hud-joy hidden" id="hud-joy"><div class="joy-base"></div><div class="joy-knob"></div></div>
       <div class="hud-aim hidden" id="hud-aim"></div>
       <div class="hud-buttons" id="hud-buttons">
-        <button class="hud-btn" id="btn-jump">JUMP<small>2× duck</small></button>
-        <button class="hud-btn primary" id="btn-ability">Z<small></small></button>
+        <button class="hud-btn" id="btn-jump">${icon('jump')}<small>JUMP · 2× DUCK</small></button>
+        <button class="hud-btn primary" id="btn-ability"><i class="ico" id="btn-ability-ico"></i><small></small></button>
       </div>
       <div class="hud-hint" id="hud-hint"></div>
       <div class="overlay-flash" id="ov-flash"></div>
       <div class="overlay-gas" id="ov-gas"></div>
-      <div class="overlay-ko hidden" id="ov-ko"><div>YOU'RE DOWN</div><small>your crew is pulling you out…</small></div>
+      <div class="overlay-ko hidden" id="ov-ko"><div class="stamp">YOU'RE DOWN</div><small>your crew is pulling you out…</small></div>
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.bindButtons();
@@ -61,16 +62,19 @@ export class HUD {
     this.root.classList.toggle('touch', this.input.isTouch);
     this.root.classList.toggle('spectate', !pl);
     if (pl) {
-      this.$('hud-arch').textContent = `${pl.arch.name} · ${pl.weapon.name}`;
+      this.$('hud-arch-text').textContent = `${pl.arch.name} · ${pl.weapon.name}`;
+      this.$('hud-arch-ico').innerHTML = ICONS[pl.arch.id];
       this.$('hud-arch').style.setProperty('--c', pl.faction === 'rioter' ? '#ff4d2e' : '#3d8bff');
+      this.root.style.setProperty('--c', pl.faction === 'rioter' ? '#ff4d2e' : '#3d8bff');
       this.$('hud-line-label').textContent = pl.faction === 'rioter' ? 'MOB PUSH' : 'SQUAD PUSH';
       const a = pl.arch.ability; this.$('btn-ability').querySelector('small').textContent = a.tap !== '—' ? a.tap : a.hold;
+      this.$('btn-ability-ico').innerHTML = ICONS[ABILITY_ICON[pl.arch.id]];
       this.$('hud-hint').innerHTML = this.input.isTouch
         ? `Joystick to move (push past the ring to run) · tap to strike · swipe to throw · <b>Z</b>: tap = ${a.tap} · hold = ${a.hold}`
         : `WASD move · Shift run · click/X strike · click-drag or hold X throw · Space jump (2× duck) · <b>Z</b> tap = ${a.tap} · hold = ${a.hold} · Q/E camera`;
       setTimeout(() => this.$('hud-hint').classList.add('fade'), 9000);
       setTimeout(() => this.toast(pl.faction === 'rioter' ? 'Your mob is looting this block. Wreck shops, then push for the plaza.' : 'Hold the plaza. Fan out and quell the mobs before they reach the core.', 'good'), 800);
-    } else { this.$('hud-arch').textContent = 'SPECTATING'; this.$('hud-hint').textContent = ''; }
+    } else { this.$('hud-arch-text').textContent = 'SPECTATING'; this.$('hud-hint').textContent = ''; }
     this.$('hud-strategy').classList.add('hidden'); this.$('ov-ko').classList.add('hidden');
     this.refreshAmmo(); this.feedItems = []; this.$('hud-feed').innerHTML = ''; this.$('hud-popups').innerHTML = '';
   }
@@ -95,8 +99,8 @@ export class HUD {
     const pl = this.game?.player; if (!pl) return;
     const types = pl.faction === 'rioter' ? ['rock', 'molotov'] : ['teargas', 'flashbang'];
     if (!this.selectedThrow || !types.includes(this.selectedThrow)) this.selectedThrow = types.find((t) => pl.inventory[t] > 0) || types[0];
-    let html = types.map((t) => `<div data-type="${t}" class="${this.selectedThrow === t ? 'sel' : ''}"><i style="background:${PROJECTILES[t].color}"></i>${PROJECTILES[t].name} <b>${pl.inventory[t] || 0}</b></div>`).join('');
-    if (pl.arch.gun) html += `<div><i style="background:#222"></i>Rubber <b>${pl.reloadT > 0 ? '…' : pl.fireAmmo}</b></div>`;
+    let html = types.map((t) => `<div data-type="${t}" class="${this.selectedThrow === t ? 'sel' : ''}">${icon(t)}<span>${PROJECTILES[t].name}</span><b>${pl.inventory[t] || 0}</b></div>`).join('');
+    if (pl.arch.gun) html += `<div>${icon('bullet')}<span>Rubber</span><b>${pl.reloadT > 0 ? '…' : pl.fireAmmo}</b></div>`;
     this.$('hud-ammo').innerHTML = html;
   }
   toast(msg, kind = '') {
@@ -148,24 +152,27 @@ export class HUD {
 
 export function renderResult(root, game, balance, onBack) {
   const o = game.outcome, s = game.stats, pl = game.player;
-  const reasonText = { ko: 'KNOCKED OUT', arrested: 'ARRESTED', dispersed: 'RIOT DISPERSED · ORDER RESTORED', broken: 'LINES BROKEN · POLICE FELL BACK', whistle: 'ROUND OVER' }[game.reason] || 'ROUND OVER';
+  const reason = { ko: ['KNOCKED OUT', 'skull'], arrested: ['ARRESTED', 'cuffs'], dispersed: ['RIOT DISPERSED', 'shield_small'], broken: ['LINES BROKEN', 'flag'], whistle: ['ROUND OVER', 'clock'] }[game.reason] || ['ROUND OVER', 'clock'];
   const win = o.payout >= game.stake;
+  const net = o.payout - game.stake;
   root.innerHTML = `
-    <div class="result-card">
-      <div class="result-reason">${reasonText}</div>
-      <div class="result-payout ${win ? 'win' : 'loss'}">${fmt(o.payout)}</div>
-      <div class="result-mult">${o.multiplier.toFixed(2)}× on a ${fmt(game.stake)} stake · ${pl.arch.name} · ${pl.weapon.name}</div>
-      <div class="result-grid">
-        <div><span>Time alive</span><b>${fmtTime(game.time)}</b></div>
-        <div><span>Your advance</span><b>${Math.round(s.advance)} ft</b></div>
-        <div><span>${pl.faction === 'rioter' ? 'Mob' : 'Squad'} push</span><b>${Math.round(s.linePush)} ft</b></div>
-        <div><span>Knockouts</span><b>${s.kos}</b></div>
-        <div><span>Props wrecked</span><b>${s.props}</b></div>
-        <div><span>${pl.faction === 'rioter' ? 'Looted' : 'Mobs quelled'}</span><b>${pl.faction === 'rioter' ? s.loot : s.quelled}</b></div>
-        ${s.buildings ? `<div><span>Buildings down</span><b>${s.buildings}</b></div>` : ''}
+    <div class="report" style="--c:${pl.faction === 'rioter' ? '#ff4d2e' : '#3d8bff'}">
+      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+      <div class="hazard"></div>
+      <div class="report-head"><span>AFTER ACTION REPORT · ${game.district || ''}</span><span>${fmtTime(game.time)} ON THE GROUND</span></div>
+      <div class="stamp ${win ? 'win' : 'loss'}">${icon(reason[1])}${reason[0]}</div>
+      <div class="payout ${win ? 'win' : 'loss'}">${fmt(o.payout)}</div>
+      <div class="payout-sub">${o.multiplier.toFixed(2)}× on ${fmt(game.stake)} · ${net >= 0 ? '+' : ''}${fmt(net)} net · ${pl.arch.name} with ${pl.weapon.name}</div>
+      <div class="report-grid">
+        <div>${icon('run')}<span>Your advance</span><b>${Math.round(s.advance)} ft</b></div>
+        <div>${icon('line')}<span>${pl.faction === 'rioter' ? 'Mob push' : 'Squad push'}</span><b>${Math.round(s.linePush)} ft</b></div>
+        <div>${icon('skull')}<span>Knockouts</span><b>${s.kos}</b></div>
+        <div>${icon('sledge')}<span>Props wrecked</span><b>${s.props}</b></div>
+        <div>${icon(pl.faction === 'rioter' ? 'loot' : 'shield_small')}<span>${pl.faction === 'rioter' ? 'Looted' : 'Mobs quelled'}</span><b>${pl.faction === 'rioter' ? s.loot : s.quelled}</b></div>
+        <div>${icon('map')}<span>Buildings down</span><b>${s.buildings}</b></div>
       </div>
-      <div class="result-balance">Balance <b>${fmt(balance)}</b></div>
-      <button class="big-btn" id="btn-back">BACK TO LOBBY</button>
+      <div class="report-balance">${icon('cash')}BALANCE <b>${fmt(balance)}</b></div>
+      <button class="join" id="btn-back"><span class="join-main">BACK TO LOBBY</span><span class="join-sub">A NEW DISTRICT IS LOADING</span></button>
     </div>`;
   root.querySelector('#btn-back').onclick = onBack;
 }

@@ -15,9 +15,9 @@ import { FACTIONS, ARCHETYPES, ECONOMY, M_TO_FT, PROJECTILES, WEAPONS } from '..
 import { mat } from '../world/props.js';
 
 export class Game {
-  constructor({ scene, camera, renderer, hud, input, quality, seed, selection, spectate = false, world = null }) {
+  constructor({ scene, camera, renderer, hud, input, quality, seed, selection, spectate = false, world = null, spawns = null }) {
     this.scene = scene; this.camera = camera; this.renderer = renderer; this.hud = hud; this.input = input; this.quality = quality;
-    this.seed = seed; this.rng = new RNG(seed); this.spectate = spectate; this.selection = selection;
+    this.seed = seed; this.rng = new RNG(seed); this.spectate = spectate; this.selection = selection; this.presetSpawns = spawns;
     this.characters = []; this.groups = []; this.gasOwners = []; this.messages = [];
     this.time = 0; this.money = 0; this.roundOver = false; this.playerThreat = -6; this.debugLog = [];
     this.fronts = null; // contested perimeter radius per sector, created after the world
@@ -96,7 +96,7 @@ export class Game {
     const core = [[-12, -8], [12, -8], [-12, 14], [12, 14]].map(([x, z]) => W.nearestWalkable(W.center.x + x, W.center.z + z, 8));
     mk('peacekeeper', q.peacekeeper, core, core.map((p) => W.sectorOf(p.x, p.z)));
     // mobs: well separated edges of the city; they loot first, then choose an approach
-    const spots = W.mobSpawnSpots(rng, 4);
+    const spots = this.presetSpawns || W.mobSpawnSpots(rng, 4);
     mk('rioter', q.rioter, spots, spots.map((p) => W.sectorOf(p.x, p.z)));
     for (const g of this.groups) if (g.faction === 'peacekeeper') g.setStrategy('slow_advance');
   }

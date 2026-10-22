@@ -6,7 +6,7 @@ import { Humanoid } from './entities/humanoid.js';
 import { Input } from './core/input.js';
 import { CinematicCamera } from './core/camera.js';
 import { HUD, renderResult } from './ui/hud.js';
-import { Menu } from './ui/menu.js';
+import { Menu, districtName } from './ui/menu.js';
 import { RNG, newSeed, hashString } from './core/rng.js';
 import { FACTIONS, ARCHETYPES, WEAPONS, STAKES, QUALITY } from './data/config.js';
 
@@ -43,29 +43,28 @@ const save = () => localStorage.setItem(LS, JSON.stringify({ faction: state.fact
 const hudRoot = document.getElementById('hud'), menuRoot = document.getElementById('menu'), resultRoot = document.getElementById('result');
 const input = new Input(canvas, null);
 const hud = new HUD(hudRoot, input); input.hud = hud;
-const menu = new Menu(menuRoot, state, { onChange: () => { save(); lobby.refreshLineup(); }, onJoin: () => joinRound(), onSpectate: () => spectateRound() });
+const menu = new Menu(menuRoot, state, { onChange: () => { save(); lobby.refreshLineup(); }, onJoin: () => joinRound() });
 
 // ---------- lobby (world + lineup + cinematic camera) ----------
-// The lobby constantly restarts: a 20s countdown, then a live round runs (bots only, shown behind the
-// menu) that you can watch or queue for. Joining during the countdown starts your round immediately.
+// Lobbies run back to back. You can only join the one currently loading; when its countdown ends
+// without you, that round starts elsewhere and the next district loads in front of you.
 const cine = new CinematicCamera(camera); window.__cine = cine; window.__camera = camera;
 let lobby = null, game = null, mode = 'lobby', roundSeed = newSeed();
-const LIVE_ROUND_SECONDS = 75;
 
 function makeLobby(seed) {
   const rng = new RNG(seed);
   const world = new World(scene, rng.fork('world'), quality);
   const lineup = []; const group = new THREE.Group(); scene.add(group);
   const L = { world, lineup, group, seed, t: 0, refreshLineup() { buildLineup(); }, dispose() { scene.remove(group); } };
+  L.spawns = world.mobSpawnSpots(new RNG(hashString('spawns' + seed)), 4);
   const buildLineup = () => {
     while (group.children.length) group.remove(group.children[0]); lineup.length = 0;
     const F = FACTIONS[state.faction], rngL = new RNG(hashString('lineup' + seed + state.faction));
-    const dir = F.dir, baseZ = -dir * 6.5; // own side of the line, in the plaza
+    const dir = F.dir, baseZ = -dir * 6.5;
     const roster = state.faction === 'rioter'
       ? ['instigator', 'looter', 'brawler', 'rioter_npc', 'rioter_npc', 'instigator', 'looter', 'brawler', 'rioter_npc', 'rioter_npc', 'rioter_npc']
       : ['commander', 'front_echelon', 'front_echelon', 'snatch_squad', 'grenadier', 'front_echelon', 'snatch_squad', 'grenadier', 'peacekeeper_npc', 'front_echelon'];
     const w = WEAPONS[state.faction][state.weaponTier].id;
-    // put the selected archetype in the centre of the front row
     const fi = roster.indexOf(state.archetype); [roster[2], roster[fi]] = [roster[fi], roster[2]];
     const focusIdx = 2;
     roster.forEach((a, i) => {
@@ -86,59 +85,40 @@ function makeLobby(seed) {
   return L;
 }
 
-/** Spectating shows the whole square from above: drop resolution and shadows so the orbit stays smooth. */
-function setSpectateQuality(on) {
-  renderer.setPixelRatio(on ? 1 : Math.min(devicePixelRatio, quality.pixelRatio));
-  if (quality.shadows) { renderer.shadowMap.enabled = !on; sun.castShadow = !on; scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; }); }
-  scene.fog.far = on ? quality.drawDistance * 0.8 : quality.drawDistance;
-}
 function startLobby() {
-  setSpectateQuality(false);
   mode = 'lobby'; hud.stop(); resultRoot.classList.add('hidden');
   if (game) { game.dispose(); game = null; }
+  if (lobby) { lobby.dispose(); scene.remove(lobby.world.group); lobby = null; }
   roundSeed = newSeed();
   lobby = makeLobby(roundSeed); window.__lobby = lobby;
-  state.countdown = 20; state.lobbyCount = 18 + Math.floor(Math.random() * 14); state.live = false;
+  state.countdown = 20; state.lobbyCount = 18 + Math.floor(Math.random() * 14);
+  state.lobbyId = String(1000 + (roundSeed % 9000)); state.district = districtName(new RNG(hashString('name' + roundSeed)));
+  state.world = lobby.world; state.spawns = lobby.spawns;
+  state.cityStats = `${lobby.world.buildings.length} BUILDINGS · ${lobby.world.props.length} PROPS`;
   menu.show(); input.enabled = false;
   document.getElementById('boot').classList.add('hidden');
-  if (state.queued) { state.queued = false; joinRound(); }
+}
+/** The countdown ran out without the player: that round is running elsewhere; load the next district. */
+function rollLobby() {
+  hud.toast && null;
+  const note = document.createElement('div'); note.className = 'lobby-note'; note.textContent = `LOBBY #${state.lobbyId} STARTED WITHOUT YOU · LOADING THE NEXT DISTRICT`;
+  document.body.appendChild(note); setTimeout(() => note.remove(), 2600);
+  startLobby();
 }
 function joinRound() {
-  if (state.live) { state.queued = !state.queued; menu.render(); return; } // queue for the next round
   const stake = STAKES[state.weaponTier];
-  if (state.balance < stake) { hud.toast('Not enough balance for that stake.'); alert('Not enough balance for that stake.'); return; }
-  state.balance -= stake; save(); menu.tick();
-  startRound(false);
+  if (state.balance < stake) { alert('Not enough balance for that stake.'); return; }
+  state.balance -= stake; save();
+  startRound();
 }
-function spectateRound() {
-  if (!state.live) startLiveRound();
-  menu.hide(); hud.start(game); showSpectateBar();
-}
-function showSpectateBar() {
-  const bar = document.createElement('div'); bar.className = 'spectate-bar'; bar.innerHTML = '<button class="big-btn">BACK TO LOBBY</button>';
-  bar.querySelector('button').onclick = () => { bar.remove(); hud.stop(); menu.show(); }; hudRoot.appendChild(bar);
-  if (game) game.spectateBar = bar;
-}
-/** Bots-only round that plays behind the menu until it ends; then the lobby restarts with a new city. */
-function startLiveRound() {
-  if (game) return;
-  const world = lobby.world; lobby.dispose(); lobby = null;
-  game = new Game({ scene, camera, renderer, hud, input, quality, seed: roundSeed, selection: null, spectate: true, world });
-  game.sun = sun; hud.stop(); input.enabled = false;
-  setSpectateQuality(true);
-  state.live = true; state.lobbyCount = 18 + Math.floor(Math.random() * 14); menu.render();
-  game.onEnd = () => { if (game?.spectateBar) game.spectateBar.remove(); startLobby(); };
-  game.liveDeadline = LIVE_ROUND_SECONDS;
-  window.__game = game;
-}
-function startRound(spectate) {
+function startRound() {
   if (game) { game.dispose(); game = null; }
   menu.hide(); mode = 'playing';
-  const world = lobby ? lobby.world : new World(scene, new RNG(roundSeed).fork('world'), quality); if (lobby) { lobby.dispose(); lobby = null; }
+  const world = lobby.world, spawns = lobby.spawns; lobby.dispose(); lobby = null;
   const selection = { faction: state.faction, archetype: state.archetype, weapon: WEAPONS[state.faction][state.weaponTier].id, stake: STAKES[state.weaponTier] };
-  game = new Game({ scene, camera, renderer, hud, input, quality, seed: roundSeed, selection, spectate, world });
-  game.sun = sun; setSpectateQuality(false);
-  hud.start(game); input.enabled = !spectate; input.camYaw = 0; state.live = false;
+  game = new Game({ scene, camera, renderer, hud, input, quality, seed: roundSeed, selection, world, spawns });
+  game.sun = sun; game.district = state.district;
+  hud.start(game); input.enabled = true; input.camYaw = 0;
   game.onEnd = (reason) => {
     mode = 'result'; hud.stop();
     state.balance += game.outcome.payout; save();
@@ -156,10 +136,9 @@ function frame(now) {
     for (const l of lobby.lineup) l.h.update(dt, { moving: false, stance: 1 });
     if (lobby.ring) lobby.ring.scale.setScalar(1 + Math.sin(lobby.t * 3) * 0.08);
     cine.update(dt, lobby.focus, isMobile ? 11 : 8.5, isMobile ? 6 : 3.8, isMobile ? 0 : 2.4, isMobile ? -3.4 : 0.2, lobby.faceAngle);
-    countAcc += dt; if (countAcc >= 1) { countAcc = 0; state.countdown = Math.max(0, state.countdown - 1); menu.tick(); if (state.countdown === 0) startLiveRound(); }
+    countAcc += dt; if (countAcc >= 1) { countAcc = 0; state.countdown = Math.max(0, state.countdown - 1); menu.tick(); if (state.countdown === 0) rollLobby(); }
   } else if (game) {
     game.update(dt);
-    if (game.spectate && game.liveDeadline && game.time > game.liveDeadline && !game.roundOver) game.endRound('whistle');
   }
   renderer.render(scene, camera);
   window.__frames = (window.__frames || 0) + 1;
@@ -177,5 +156,4 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__installPrompt = e; if (mode === 'lobby') menu.render(); });
 // test hooks
 window.__step = (sec, dt = 1 / 30) => { if (!game) return; for (let i = 0; i < sec / dt; i++) { if (game.roundOver) break; game.update(dt); } };
-window.__startLive = () => startLiveRound();
 window.__input = input;
