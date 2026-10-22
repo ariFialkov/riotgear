@@ -179,16 +179,16 @@ export class Humanoid {
     this.jumpY = jumpY;
 
     // locomotion
-    const run = Math.min(1, speed / 4.5);
-    if (moving && !ko) this.phase += dt * (6 + speed * 1.6); else this.phase += dt * 1.2;
-    const amp = moving ? 0.45 + 0.45 * run : 0;
+    const run = Math.max(0, Math.min(1, (speed - 2) / 4)); // 0 at a stroll, 1 at a full sprint
+    if (moving && !ko) this.phase += dt * (5 + speed * 1.5); else this.phase += dt * 1.2;
+    const amp = moving ? 0.4 + 0.55 * run : 0;
     const s = Math.sin(this.phase), c = Math.cos(this.phase);
     const duckBend = this.duck;
     this.legL.rotation.x = s * amp + duckBend * 0.9;
     this.legR.rotation.x = -s * amp + duckBend * 0.9;
     const idleBob = moving ? Math.abs(c) * 0.04 * run : Math.sin(this.phase) * 0.012;
     this.body.position.y = this.legLen + idleBob - duckBend * 0.38 + this.jumpY;
-    this.torso.rotation.x = 0.06 * run + duckBend * 0.35;
+    this.torso.rotation.x = 0.04 + 0.14 * run + duckBend * 0.35;
     this.torso.rotation.y = moving ? c * 0.08 * run : 0;
     this.torso.rotation.z = 0;
     this.head.rotation.set(0, 0, 0);

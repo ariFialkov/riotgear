@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Humanoid } from './humanoid.js';
 import { ARCHETYPES, WEAPONS, FACTIONS } from '../data/config.js';
 
-const BASE_HP = 100, BASE_SPEED = 5.2;
+const BASE_HP = 140, BASE_SPEED = 3.7;
 let NEXT_ID = 1;
 
 export class Character {
@@ -125,7 +125,7 @@ export class Character {
     // timers
     if (this.stun > 0) this.stun -= dt; if (this.blind > 0) this.blind -= dt; if (this.slow > 0) this.slow -= dt;
     if (this.flash > 0) this.flash -= dt; if (this.attackCd > 0) this.attackCd -= dt;
-    if (this.burn > 0) { this.burn -= dt; if (this.alive) { this.hp -= 6 * dt; if (this.hp <= 0) this.knockOut(this.lastHitBy); } if (this.rng.chance(0.4)) this.game.effects.p.emit(this.pos.x + this.rng.float(-0.3, 0.3), this.y + 1 + this.rng.float(0, 0.8), this.pos.z + this.rng.float(-0.3, 0.3), { vy: 2, color: '#ff8c1a', size: 0.5, life: 0.4 }); }
+    if (this.burn > 0) { this.burn -= dt; if (this.alive) { this.hp -= 4 * dt; if (this.hp <= 0) this.knockOut(this.lastHitBy); } if (this.rng.chance(0.4)) this.game.effects.p.emit(this.pos.x + this.rng.float(-0.3, 0.3), this.y + 1 + this.rng.float(0, 0.8), this.pos.z + this.rng.float(-0.3, 0.3), { vy: 2, color: '#ff8c1a', size: 0.5, life: 0.4 }); }
     if (this.reloadT > 0) { this.reloadT -= dt; if (this.reloadT <= 0) this.fireAmmo = 8; }
     if (this.ko) {
       this.koTimer -= dt;

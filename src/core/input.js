@@ -10,6 +10,7 @@ export class Input {
     this.attackHeld = false; this.abilityHeld = false; this.abilityHoldT = 0; this.abilityDown = false;
     this.xDown = 0; this.lastSpace = 0; this.camYaw = 0;
     this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    this.run = false; this.joyRun = false;
     this.pointer = null; this.joy = null;
     this.enabled = false;
     this.bind();
@@ -51,6 +52,7 @@ export class Input {
       if (this.joy && e.pointerId === this.joy.id) {
         this.joy.x = e.clientX; this.joy.y = e.clientY;
         let dx = (this.joy.x - this.joy.ox) / 55, dy = (this.joy.y - this.joy.oy) / 55; const l = Math.hypot(dx, dy);
+        this.joyRun = l > 1.35; // pull the stick well past the ring to run
         if (l > 1) { dx /= l; dy /= l; }
         this.move.x = dx; this.move.y = -dy; this.hud?.joystick(true, this.joy.ox, this.joy.oy, dx, dy); return;
       }
@@ -62,7 +64,7 @@ export class Input {
       }
     });
     const up = (e) => {
-      if (this.joy && e.pointerId === this.joy.id) { this.joy = null; this.move.x = 0; this.move.y = 0; this.hud?.joystick(false); return; }
+      if (this.joy && e.pointerId === this.joy.id) { this.joy = null; this.joyRun = false; this.move.x = 0; this.move.y = 0; this.hud?.joystick(false); return; }
       if (this.pointer && e.pointerId === this.pointer.id) {
         const p = this.pointer; this.pointer = null; this.attackHeld = false; this.hud?.aim(null);
         if (!this.enabled) return;
@@ -84,6 +86,7 @@ export class Input {
       if (k.has('w') || k.has('arrowup')) y += 1; if (k.has('s') || k.has('arrowdown')) y -= 1;
       const l = Math.hypot(x, y) || 1; this.move.x = x / l; this.move.y = y / l;
     }
+    this.run = this.keys.has('shift') || this.joyRun;
     if (this.keys.has('q')) this.camYaw += dt * 2.2; if (this.keys.has('e')) this.camYaw -= dt * 2.2;
     if (this.abilityDown) this.abilityHoldT += dt;
   }

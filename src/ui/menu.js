@@ -38,7 +38,7 @@ export class Menu {
         <div class="countdown" id="menu-countdown">${s.live ? `<span class="live-badge">LIVE</span>Round in progress · ${s.lobbyCount} playing` : `Next round starts in <b id="menu-count">${s.countdown}</b>s · ${s.lobbyCount} players queued`}</div>
       </div>
       <div class="menu-foot">
-        <div class="controls-hint">WASD / joystick move · click / tap strike · drag / swipe throw · Space jump · Z ability</div>
+        <div class="controls-hint">WASD / joystick move · Shift run · click / tap strike · drag / swipe throw · Space jump · Z ability</div>
         <button class="ghost-btn tiny" id="btn-install" class="hidden">INSTALL APP</button>
       </div>`;
     this.root.querySelector('#seg-faction').onclick = (e) => { const b = e.target.closest('[data-f]'); if (!b) return; this.set({ faction: b.dataset.f, archetype: FACTIONS[b.dataset.f].archetypes[0] }); };

@@ -94,12 +94,12 @@ export class Projectiles {
     }
     switch (p.type) {
       case 'rock':
-        if (hit.char) { hit.char.takeHit(def.dmg, owner, 1.0, { stun: 0.2 }); E.hit(x, y, z, '#ddd'); }
+        if (hit.char) { hit.char.takeHit(def.dmg, owner, 0.8, { stun: 0.15 }); E.hit(x, y, z, '#ddd'); }
         else { E.debris(x, y, z, '#8a8a80', 6, 0.5); if (hit.building) g.damageBuilding(hit.building, 2, owner); if (hit.prop) g.damageProp(hit.prop, 18, owner); }
         this.checkWindows(x, y, z, owner, 1.2);
         break;
       case 'bullet':
-        if (hit.char) { hit.char.takeHit(def?.dmg ?? 11, owner, 0.8, { stun: 0.3 }); E.hit(x, y, z, '#fff'); }
+        if (hit.char) { hit.char.takeHit(def?.dmg ?? 9, owner, 0.6, { stun: 0.25 }); E.hit(x, y, z, '#fff'); }
         else { E.sparks(x, y, z, '#ddd', 4); if (hit.prop) g.damageProp(hit.prop, 8, owner); }
         this.checkWindows(x, y, z, owner, 0.8);
         break;

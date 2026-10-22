@@ -15,5 +15,7 @@ const dot = (b.x - a.x) * rx + (b.z - a.z) * rz;
 const scr = await page.evaluate(() => { const g = window.__game, cam = g.camera; const v = new (g.player.pos.constructor)(); v.copy(g.player.pos); v.project(cam); return +v.x.toFixed(3); });
 console.log(JSON.stringify({ before: a, after: b, rightDot: +dot.toFixed(2), camYawDelta: +(b.camYaw - a.camYaw).toFixed(3), playerScreenX: scr }));
 await page.keyboard.down('w'); await page.evaluate(() => window.__step(3)); await page.keyboard.up('w');
-const c = await probe(); console.log('after W:', JSON.stringify(c));
+const c = await probe(); console.log('after W 3s:', JSON.stringify(c), 'dist', Math.hypot(c.x - b.x, c.z - b.z).toFixed(1));
+await page.keyboard.down('Shift'); await page.keyboard.down('w'); await page.evaluate(() => window.__step(3)); await page.keyboard.up('w'); await page.keyboard.up('Shift');
+const d = await probe(); console.log('after Shift+W 3s:', JSON.stringify(d), 'dist', Math.hypot(d.x - c.x, d.z - c.z).toFixed(1));
 await browser.close();

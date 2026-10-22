@@ -66,8 +66,8 @@ export class HUD {
       this.$('hud-line-label').textContent = pl.faction === 'rioter' ? 'MOB PUSH' : 'SQUAD PUSH';
       const a = pl.arch.ability; this.$('btn-ability').querySelector('small').textContent = a.tap !== '—' ? a.tap : a.hold;
       this.$('hud-hint').innerHTML = this.input.isTouch
-        ? `Joystick to move · tap to strike · swipe to throw · <b>Z</b>: tap = ${a.tap} · hold = ${a.hold}`
-        : `WASD move · click/X strike · click-drag or hold X throw · Space jump (2× duck) · <b>Z</b> tap = ${a.tap} · hold = ${a.hold} · Q/E camera`;
+        ? `Joystick to move (push past the ring to run) · tap to strike · swipe to throw · <b>Z</b>: tap = ${a.tap} · hold = ${a.hold}`
+        : `WASD move · Shift run · click/X strike · click-drag or hold X throw · Space jump (2× duck) · <b>Z</b> tap = ${a.tap} · hold = ${a.hold} · Q/E camera`;
       setTimeout(() => this.$('hud-hint').classList.add('fade'), 9000);
       setTimeout(() => this.toast(pl.faction === 'rioter' ? 'Your mob is looting this block. Wreck shops, then push for the plaza.' : 'Hold the plaza. Fan out and quell the mobs before they reach the core.', 'good'), 800);
     } else { this.$('hud-arch').textContent = 'SPECTATING'; this.$('hud-hint').textContent = ''; }
@@ -134,7 +134,8 @@ export class HUD {
   joystick(on, ox, oy, dx, dy) {
     const el = this.$('hud-joy'); el.classList.toggle('hidden', !on); if (!on) return;
     el.style.left = `${ox}px`; el.style.top = `${oy}px`;
-    el.querySelector('.joy-knob').style.transform = `translate(${dx * 40}px, ${dy * 40}px)`;
+    const l = Math.hypot(dx, dy); el.querySelector('.joy-knob').style.transform = `translate(${dx * 40}px, ${dy * 40}px)`;
+    el.classList.toggle('run', this.input.joyRun);
   }
   aim(x0, y0, x1, y1) {
     const el = this.$('hud-aim'); if (x0 === null || x0 === undefined) { el.classList.add('hidden'); return; }

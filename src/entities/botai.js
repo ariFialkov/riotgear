@@ -23,7 +23,9 @@ export function updateBot(c, dt) {
   const stop = c.engage ? Math.max(0.5, c.reach - 0.35) : 0.5;
   if (c.wantBlock) { c.blocking = true; } else c.blocking = false;
   if (dist > stop && !c.holdStill) {
-    const sp = c.speed * (c.engage ? 1.05 : 1);
+    // bots walk in formation and only break into a run to chase or to catch up with their group
+    c.running = c.engage || dist > 14;
+    const sp = c.speed * (c.running ? 1.4 : 1);
     let vx = (dx / dist) * sp, vz = (dz / dist) * sp;
     // separation from neighbours
     let sx = 0, sz = 0;
@@ -81,8 +83,8 @@ function decide(c) {
     const ez = C.z < r.z0 ? r.z0 + 1 : C.z > r.z1 ? r.z1 - 1 : Math.max(r.z0 + 1, Math.min(r.z1 - 1, c.pos.z));
     c.desired.set(ex, ez);
     const t = nearestEnemy(c, 40); c.target = t;
-    if (t && c.inventory.rock > 0 && rng.chance(0.45)) throwAt(c, 'rock', t);
-    else if (t && c.inventory.molotov > 0 && rng.chance(0.15)) throwAt(c, 'molotov', t);
+    if (t && c.inventory.rock > 0 && rng.chance(0.18)) throwAt(c, 'rock', t);
+    else if (t && c.inventory.molotov > 0 && rng.chance(0.05)) throwAt(c, 'molotov', t);
     if (t) c.faceTowards(t.pos.x, t.pos.z, 1, 1);
     if (!s?.climb || s.climb < 0.3) { if (rng.chance(0.05)) startDescend(c); }
     return;
@@ -141,7 +143,7 @@ function decide(c) {
     if (c.throwTimer <= 0 || !t) { g.throwProp(c, t ? 1 : 0.5); }
     return;
   }
-  if (A === 'grenadier' && t && dT > 4 && dT < 22 && c.fireAmmo > 0 && rng.chance(0.22 * (s?.fire ?? 0.5) + 0.05)) {
+  if (A === 'grenadier' && t && dT > 4 && dT < 20 && c.fireAmmo > 0 && rng.chance(0.1 * (s?.fire ?? 0.5) + 0.02)) {
     c.faceTowards(t.pos.x, t.pos.z, 1, 1); g.fireGun(c, t);
     c.holdStill = dT < 16; return;
   }
@@ -149,14 +151,14 @@ function decide(c) {
 
   // --- projectiles ---
   const fire = (s?.fire ?? 0.5) * (0.7 + 0.6 * Math.max(0, bias + 0.5));
-  if (t && dT > 5 && dT < 26 && !c.humanoid.busy) {
+  if (t && dT > 6 && dT < 20 && !c.humanoid.busy && !looting) {
     const inv = c.inventory;
     if (c.faction === 'rioter') {
-      if (inv.molotov > 0 && rng.chance(0.08 * fire)) { throwAt(c, 'molotov', t); return; }
-      if (inv.rock > 0 && rng.chance(0.3 * fire)) { throwAt(c, 'rock', t); return; }
+      if (inv.molotov > 0 && rng.chance(0.025 * fire)) { throwAt(c, 'molotov', t); return; }
+      if (inv.rock > 0 && rng.chance(0.1 * fire)) { throwAt(c, 'rock', t); return; }
     } else {
-      if (inv.teargas > 0 && dT > 8 && rng.chance(0.07 * fire)) { throwAt(c, 'teargas', t); return; }
-      if (inv.flashbang > 0 && dT > 6 && rng.chance(0.06 * fire)) { throwAt(c, 'flashbang', t); return; }
+      if (inv.teargas > 0 && dT > 9 && rng.chance(0.02 * fire)) { throwAt(c, 'teargas', t); return; }
+      if (inv.flashbang > 0 && dT > 7 && rng.chance(0.015 * fire)) { throwAt(c, 'flashbang', t); return; }
     }
   }
   // --- wrecking props (rioters in scorched mode, and idle npcs sometimes) ---
@@ -194,12 +196,20 @@ function decide(c) {
 function attack(c, propOnly) {
   if (c.attackCd > 0 || c.humanoid.busy) return;
   const g = c.game;
-  c.attackCd = c.weapon.cooldown * (1.15 + c.rng.float(0, 0.5)) / (0.8 + 0.4 * c.strengthMult);
+  c.attackCd = c.weapon.cooldown * (1.9 + c.rng.float(0, 0.9)) / (0.8 + 0.4 * c.strengthMult);
   c.humanoid.play('attack', { dur: Math.max(0.3, c.weapon.cooldown * 1.1), onHit: () => { if (c.alive) meleeStrike(g, c); } });
 }
 
 function throwAt(c, type, t) {
   const g = c.game;
+  if (t.isPlayer) {
+    // keep the player from being everybody's target: at most one projectile at them every few seconds
+    const gap = g.director?.ending ? 1.5 : 5;
+    if (g.time - (g.lastThrowAtPlayer || -99) < gap) {
+      const alt = g.characters.find((o) => o !== t && o.alive && o.faction === t.faction && !o.carriedBy && c.distTo(o) < 20);
+      if (!alt) return; t = alt;
+    } else g.lastThrowAtPlayer = g.time;
+  }
   c.inventory[type]--;
   c.faceTowards(t.pos.x, t.pos.z, 1, 1);
   const lead = 0.35;

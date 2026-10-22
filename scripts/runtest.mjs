@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } }); page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+await page.addInitScript(() => localStorage.setItem('riotgear.v1', JSON.stringify({ faction: 'peacekeeper', archetype: 'commander', weaponTier: 0, balance: 1000 })));
+await page.goto('http://localhost:4173/', { waitUntil: 'load' }); await page.waitForTimeout(2500);
+await page.click('#btn-join'); await page.waitForTimeout(500);
+const tp = () => page.evaluate(() => { const g = window.__game, p = g.player; p.pos.x = 0; p.pos.z = -5; p.yaw = 0; g.followCam.snapTo(p); return [p.pos.x, p.pos.z]; });
+const pos = () => page.evaluate(() => { const p = window.__game.player; return [p.pos.x, p.pos.z, p.running, p.moveSpeed]; });
+await tp(); await page.keyboard.down('w'); await page.evaluate(() => window.__step(2)); const a = await pos(); await page.keyboard.up('w');
+await tp(); await page.keyboard.down('Shift'); await page.keyboard.down('w'); await page.evaluate(() => window.__step(2)); const b = await pos(); await page.keyboard.up('w'); await page.keyboard.up('Shift');
+console.log(JSON.stringify({ walk2s: a, run2s: b, walkDist: +(a[1] + 5).toFixed(1), runDist: +(b[1] + 5).toFixed(1) }));
+await browser.close();

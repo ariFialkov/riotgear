@@ -19,7 +19,7 @@ export class Game {
     this.scene = scene; this.camera = camera; this.renderer = renderer; this.hud = hud; this.input = input; this.quality = quality;
     this.seed = seed; this.rng = new RNG(seed); this.spectate = spectate; this.selection = selection;
     this.characters = []; this.groups = []; this.gasOwners = []; this.messages = [];
-    this.time = 0; this.money = 0; this.roundOver = false; this.playerThreat = 0; this.debugLog = [];
+    this.time = 0; this.money = 0; this.roundOver = false; this.playerThreat = -6; this.debugLog = [];
     this.fronts = null; // contested perimeter radius per sector, created after the world
     this.stats = { advance: 0, linePush: 0, kos: 0, props: 0, loot: 0, quelled: 0, buildings: 0 };
     this.botApi = { startDescend };
@@ -313,12 +313,12 @@ export class Game {
     }
     for (let k = 0; k < n; k++) {
       const f = this.fronts[k];
-      let net = (P[k] - R[k]) * 0.06; // positive = perimeter grows outward (peacekeepers winning)
-      if (P[k] > 0 && R[k] === 0) net += 0.5; if (R[k] > 0 && P[k] === 0) net -= 0.8;
+      let net = (P[k] - R[k]) * 0.045; // positive = perimeter grows outward (peacekeepers winning)
+      if (P[k] > 0 && R[k] === 0) net += 0.35; if (R[k] > 0 && P[k] === 0) net -= 0.5;
       // an empty sector slowly relaxes back towards the core's natural perimeter
       if (P[k] === 0 && R[k] === 0) net += (this.R0 - f.r) * 0.01;
       for (const j of [(k + n - 1) % n, (k + 1) % n]) { const dr = this.fronts[j].r - f.r; if (dr < -22) net -= 0.15; if (dr > 22) net += 0.15; }
-      const want = Math.max(-1.6, Math.min(1.6, net));
+      const want = Math.max(-1.1, Math.min(1.1, net));
       f.vel += (want - f.vel) * Math.min(1, dt * 1.5);
       f.r = Math.max(8, Math.min(125, f.r + f.vel * dt));
     }
@@ -342,7 +342,7 @@ export class Game {
       const gs = this.gasOwners[i]; gs.t -= dt; if (gs.t <= 0) { this.gasOwners.splice(i, 1); continue; }
       for (const c of this.characters) if (c.alive && !c.onRoof && c.faction !== (gs.owner?.faction || 'peacekeeper') && Math.hypot(c.pos.x - gs.x, c.pos.z - gs.z) < gs.r) {
         c.slow = Math.max(c.slow, 0.5); c.blind = Math.max(c.blind, 0.4);
-        c.hp -= 2.5 * dt; c.lastHitBy = gs.owner || c.lastHitBy; if (c.hp <= 0 && !c.ko) c.knockOut(gs.owner);
+        c.hp -= 1.5 * dt; c.lastHitBy = gs.owner || c.lastHitBy; if (c.hp <= 0 && !c.ko) c.knockOut(gs.owner);
         if (c.isPlayer) this.hud.gas(true);
       }
     }

@@ -6,7 +6,7 @@ export function meleeStrike(game, attacker, { heldDown = false } = {}) {
   const f = attacker.forward();
   const ox = attacker.pos.x, oz = attacker.pos.z;
   const range = attacker.reach, arc = w.arc;
-  let dmg = w.dmg * attacker.arch.stats.dmg * attacker.strengthMult;
+  let dmg = w.dmg * attacker.arch.stats.dmg * attacker.strengthMult * (attacker.isPlayer ? 1 : 0.7);
   const hitChars = [];
   const spin = attacker.humanoid.action?.variant === 'spin';
   for (const c of game.characters) {

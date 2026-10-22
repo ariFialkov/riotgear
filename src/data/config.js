@@ -119,10 +119,10 @@ export const WEAPONS = {
 export const STAKES = [1, 2, 5, 10, 25]; // credits per tier index
 
 export const PROJECTILES = {
-  rock: { name: 'Rock', faction: 'rioter', dmg: 18, radius: 0, speed: 16, mass: 0.6, color: '#8a8a80' },
+  rock: { name: 'Rock', faction: 'rioter', dmg: 12, radius: 0, speed: 16, mass: 0.6, color: '#8a8a80' },
   molotov: { name: 'Molotov', faction: 'rioter', dmg: 10, radius: 3.0, speed: 13, mass: 0.9, color: '#ffb02e', fire: 7 },
   teargas: { name: 'Tear Gas', faction: 'peacekeeper', dmg: 2, radius: 5.0, speed: 15, mass: 0.7, color: '#d9d9c8', gas: 11 },
-  flashbang: { name: 'Flashbang', faction: 'peacekeeper', dmg: 4, radius: 5.5, speed: 17, mass: 0.6, color: '#ffffff', flash: 2.4 },
+  flashbang: { name: 'Flashbang', faction: 'peacekeeper', dmg: 4, radius: 5.0, speed: 17, mass: 0.6, color: '#ffffff', flash: 1.5 },
 };
 
 export const STRATEGIES = {

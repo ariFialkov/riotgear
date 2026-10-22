@@ -98,7 +98,7 @@ export class Director {
         if (e.t > 7 && !e.sent2) { e.sent2 = true; g.strayShot(pl); }
         break;
       }
-      case 'dispersed': case 'broken': this.bias = Math.max(this.bias, 0.6); g.playerThreat = -5; break;
+      case 'dispersed': case 'broken': this.bias = Math.max(this.bias, 0.6); g.playerThreat = -10; break;
       default: break;
     }
   }

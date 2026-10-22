@@ -30,8 +30,9 @@ export class PlayerController {
     }
 
     this.cam.inputFwd = my; this.cam.inputSide = mx;
+    c.running = l > 0.05 && inp.run && !stunned && !c.ducking && !c.heldProp && !c.carried;
     if (l > 0.05 && !stunned) {
-      const sp = c.speed * Math.min(1, l);
+      const sp = c.speed * Math.min(1, l) * (c.running ? 1.75 : 1);
       c.stepOffRoof = true;
       c.move((dx / l) * sp * dt, (dz / l) * sp * dt);
       c.moving = true; c.moveSpeed = sp;
