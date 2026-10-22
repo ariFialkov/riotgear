@@ -135,7 +135,7 @@ export class Humanoid {
     this.weaponGroup = new THREE.Group(); this.handR.add(this.weaponGroup);
     this.weaponGroup.rotation.x = 0.5;
     this.setWeapon(weapon);
-    if (this.arch.shield) { this.shield = buildWeapon('shield'); this.handL.add(this.shield); this.shield.rotation.x = -0.2; }
+    if (this.arch.shield) { this.shield = buildWeapon('shield'); this.handL.add(this.shield); this.shield.position.set(0.05, 0.15, 0.2); }
     if (this.arch.gun) { this.gun = buildWeapon('gun'); this.handL.add(this.gun); this.gun.position.set(0.02, 0, 0.1); this.gun.rotation.x = -1.2; }
     if (this.arch.smokestick) { this.smoke = buildWeapon('smokestick'); this.handL.add(this.smoke); this.smokeTip = new THREE.Object3D(); this.smokeTip.position.y = 0.15; this.smoke.add(this.smokeTip); }
 
@@ -198,7 +198,7 @@ export class Humanoid {
     let arx = -s * amp * 0.8, alx = s * amp * 0.8, ary = 0, aly = 0, arz = 0.08, alz = -0.08;
     if (this.weaponId && !moving) { arx = -0.25; arz = 0.25; }
     if (stance > 0) { arx = -0.6 * stance; alx = -0.4 * stance; } // ready stance when enemies near
-    if (this.shield) { alx = -1.1; aly = 0.3; alz = -0.3; }
+    if (this.shield) { alx = -0.75; aly = 0.15; alz = -0.15; }
     if (this.gun) { alx = -0.9; aly = 0.5; }
     // blocking: shield up and square
     if (this.block > 0) { alx = lerp(alx, -1.5, this.block); aly = lerp(aly, 0.1, this.block); alz = lerp(alz, 0.0, this.block); this.torso.rotation.x += 0.15 * this.block; }
@@ -252,6 +252,8 @@ export class Humanoid {
     } else { this.armR.position.z = 0; this.armL.position.z = 0; }
 
     this.armR.rotation.set(arx, ary, arz); this.armL.rotation.set(alx, aly, alz);
+    // the riot shield stays upright and square to the body whatever the arm is doing
+    if (this.shield) { this.shield.rotation.set(-alx, -aly, -alz); }
 
     // KO: fall over from the feet pivot
     if (this.fall > 0) {

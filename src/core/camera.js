@@ -2,9 +2,10 @@ import * as THREE from 'three';
 
 export class FollowCamera {
   constructor(camera, world) {
-    this.cam = camera; this.world = world; this.yaw = 0; this.pitch = 0.42; this.dist = 6.2; this.autoYaw = true;
+    this.cam = camera; this.world = world; this.yaw = 0; this.pitch = 0.38; this.baseDist = 4.9; this.zoom = 1; this.autoYaw = true;
     this.pos = new THREE.Vector3(); this.look = new THREE.Vector3(); this.shake = 0; this.manualYaw = 0;
   }
+  get dist() { return this.baseDist * this.zoom; }
   snapTo(target) {
     this.yaw = target.yaw + Math.PI; this.pos.set(target.pos.x - Math.sin(target.yaw) * this.dist, target.y + 3, target.pos.z - Math.cos(target.yaw) * this.dist);
   }
@@ -12,7 +13,7 @@ export class FollowCamera {
     // Rigid follow: the camera only turns to follow the character when they travel forward
     // (stick/W mostly pushed forward), never on strafes, turns-in-place or combat facing snaps.
     // Manual orbit (Q/E, right-drag) is added on top and holds until the player moves forward.
-    if (input) { this.manualYaw += (input.camYaw - (this.lastInputYaw || 0)); this.lastInputYaw = input.camYaw; }
+    if (input) { this.manualYaw += (input.camYaw - (this.lastInputYaw || 0)); this.lastInputYaw = input.camYaw; this.zoom = Math.max(0.55, Math.min(2.2, this.zoom * input.takeZoom())); }
     const fwd = this.inputFwd ?? 0, side = this.inputSide ?? 0;
     const travelling = target.moving && fwd > 0.35 && Math.abs(side) < 0.9;
     if (travelling) {

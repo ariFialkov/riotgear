@@ -30,13 +30,13 @@ export class Menu {
           <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
           <div class="hazard"></div>
           <div class="panel-grid">
-            <div class="col-main">
+            <div class="col-a">
               <div class="seg" id="seg-faction">
-                ${Object.values(FACTIONS).map((f) => `<button data-f="${f.id}" class="${s.faction === f.id ? 'on' : ''}" style="--c:${f.color}">${icon(f.id)}<span>${f.name.toUpperCase()}</span><small>${f.id === 'rioter' ? 'break the line' : 'hold the core'}</small></button>`).join('')}
+                ${Object.values(FACTIONS).map((f) => `<button data-f="${f.id}" class="${s.faction === f.id ? 'on' : ''}" style="--c:${f.color}">${icon(f.id)}<span>${f.name.toUpperCase()}</span></button>`).join('')}
               </div>
               <div class="row-label"><span>01</span> ARCHETYPE</div>
               <div class="cards arch" id="cards-arch">
-                ${F.archetypes.map((id) => { const a = ARCHETYPES[id]; return `<button data-a="${id}" class="${s.archetype === id ? 'on' : ''}">${icon(id, 'big')}<b>${a.name}</b><small>${a.build}</small></button>`; }).join('')}
+                ${F.archetypes.map((id) => { const a = ARCHETYPES[id]; return `<button data-a="${id}" class="${s.archetype === id ? 'on' : ''}">${icon(id, 'big')}<b>${a.name}</b></button>`; }).join('')}
               </div>
               <div class="brief">
                 <div class="brief-head">${icon(s.archetype)}<div><b>${arch.name.toUpperCase()}</b><span>${F.name.slice(0, -1)} · ${arch.build} build</span></div></div>
@@ -51,34 +51,29 @@ export class Menu {
                   <div><span>TOUGHNESS</span><div class="bar">${bar(st.hp)}</div></div>
                 </div>
               </div>
+            </div>
+            <div class="col-b">
               <div class="row-label"><span>02</span> WEAPON · STAKE</div>
               <div class="cards weapons" id="chips-weapon">
-                ${weapons.map((wp, i) => `<button data-w="${i}" class="${s.weaponTier === i ? 'on' : ''}">${icon(wp.id, 'big')}<b>${wp.name}</b><em>${fmt(STAKES[i])}</em><i class="tier">${'<u></u>'.repeat(i + 1)}</i></button>`).join('')}
+                ${weapons.map((wp, i) => `<button data-w="${i}" class="${s.weaponTier === i ? 'on' : ''}">${icon(wp.id, 'big')}<span class="wname"><b>${wp.name}</b><small>${wp.desc}</small></span><em>${fmt(STAKES[i])}</em><i class="tier">${'<u></u>'.repeat(i + 1)}</i></button>`).join('')}
               </div>
-              <div class="weapon-desc">${icon(w.id)}<span>${w.desc}</span></div>
             </div>
-            <aside class="col-side">
+            <aside class="col-c">
               <div class="district">
-                <div class="district-head">${icon('map')}<div><b>${s.district}</b><span>DISTRICT PREVIEW · ${s.cityStats}</span></div></div>
+                <div class="district-head">${icon('map')}<div><b>${s.district}</b><span>${s.cityStats}</span></div></div>
                 <canvas id="menu-map" width="156" height="214"></canvas>
-                <div class="legend"><i style="--k:#ff4d2e"></i>mobs form at the edges <i style="--k:#3d8bff"></i>squads hold the plaza</div>
+                <div class="legend"><i style="--k:#ff4d2e"></i>mobs at the edges <i style="--k:#3d8bff"></i>squads in the plaza</div>
               </div>
-              <div class="rules">
-                <div>${icon('cash')}<span>Earn every second conscious, every foot of ground, every wreck, loot, knockout and quelled mob.</span></div>
-                <div>${icon('target')}<span>The round ends when you're put down, arrested, or the riot is decided.</span></div>
+              <div class="countdown">
+                <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" class="ring-bg"/><circle cx="20" cy="20" r="17" class="ring" id="ring" style="stroke-dasharray:${(s.countdown / 20) * 106.8} 106.8"/></svg>
+                <div><span>NEXT ROUND</span><b id="menu-count">0:${pad(s.countdown)}</b><small>${s.lobbyCount} queued</small></div>
               </div>
+              <button class="join" id="btn-join"><span class="join-main">JOIN ROUND</span><span class="join-sub">STAKE ${fmt(STAKES[s.weaponTier])} · ${w.name.toUpperCase()}</span></button>
             </aside>
-          </div>
-          <div class="join-row">
-            <button class="join" id="btn-join"><span class="join-main">JOIN ROUND</span><span class="join-sub">STAKE ${fmt(STAKES[s.weaponTier])} · ${w.name.toUpperCase()}</span></button>
-            <div class="countdown">
-              <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" class="ring-bg"/><circle cx="20" cy="20" r="17" class="ring" id="ring" style="stroke-dasharray:${(s.countdown / 20) * 106.8} 106.8"/></svg>
-              <div><span>NEXT ROUND</span><b id="menu-count">0:${pad(s.countdown)}</b><small>${s.lobbyCount} queued</small></div>
-            </div>
           </div>
         </section>
         <footer class="menu-foot">
-          <div>${icon('run')}WASD · SHIFT RUN &nbsp; ${icon('target')}CLICK STRIKE · DRAG THROW &nbsp; ${icon('jump')}SPACE JUMP · 2× DUCK &nbsp; ${icon('cog')}Z ABILITY</div>
+          <div>${icon('run')}WASD · SHIFT RUN &nbsp; ${icon('target')}CLICK STRIKE · DRAG THROW &nbsp; ${icon('jump')}SPACE JUMP · 2× DUCK &nbsp; ${icon('cog')}Z ABILITY &nbsp; ${icon('refresh')}WHEEL / PINCH ZOOM</div>
           <button class="ghost tiny" id="btn-install">INSTALL APP</button>
         </footer>
       </div>`;

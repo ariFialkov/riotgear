@@ -10,7 +10,7 @@ export class Input {
     this.attackHeld = false; this.abilityHeld = false; this.abilityHoldT = 0; this.abilityDown = false;
     this.xDown = 0; this.lastSpace = 0; this.camYaw = 0;
     this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
-    this.run = false; this.joyRun = false;
+    this.run = false; this.joyRun = false; this.zoomFactor = 1; this.pointer2 = null;
     this.pointer = null; this.joy = null;
     this.enabled = false;
     this.bind();
@@ -44,7 +44,10 @@ export class Input {
       try { c.setPointerCapture(e.pointerId); } catch {}
       const joyZone = this.isTouch && e.clientX < innerWidth * 0.45 && e.clientY > innerHeight * 0.35;
       if (joyZone && !this.joy) { this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY }; this.hud?.joystick(true, e.clientX, e.clientY, 0, 0); return; }
-      if (this.pointer) return;
+      if (this.pointer) { // second finger: pinch to zoom, and the first finger stops being a tap/swipe
+        if (!this.pointer2) { this.pointer2 = { id: e.pointerId, x: e.clientX, y: e.clientY }; this.pointer.pinch = true; this.pinchD = Math.hypot(this.pointer.x - e.clientX, this.pointer.y - e.clientY); this.attackHeld = false; this.hud?.aim(null); }
+        return;
+      }
       this.pointer = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now(), button: e.button };
       if (e.button === 0 && !this.isTouch) this.attackHeld = true;
     });
@@ -56,6 +59,13 @@ export class Input {
         if (l > 1) { dx /= l; dy /= l; }
         this.move.x = dx; this.move.y = -dy; this.hud?.joystick(true, this.joy.ox, this.joy.oy, dx, dy); return;
       }
+      if (this.pointer2 && e.pointerId === this.pointer2.id) { this.pointer2.x = e.clientX; this.pointer2.y = e.clientY; }
+      if (this.pointer && this.pointer2 && (e.pointerId === this.pointer.id || e.pointerId === this.pointer2.id)) {
+        if (e.pointerId === this.pointer.id) { this.pointer.x = e.clientX; this.pointer.y = e.clientY; }
+        const d = Math.hypot(this.pointer.x - this.pointer2.x, this.pointer.y - this.pointer2.y);
+        if (this.pinchD > 10 && d > 10) this.zoomFactor *= this.pinchD / d; // fingers apart = zoom in (closer)
+        this.pinchD = d; return;
+      }
       if (this.pointer && e.pointerId === this.pointer.id) {
         this.pointer.x = e.clientX; this.pointer.y = e.clientY;
         if (this.pointer.button === 2 || this.keys.has('shift')) { this.camYaw -= (e.movementX || 0) * 0.005; }
@@ -65,9 +75,10 @@ export class Input {
     });
     const up = (e) => {
       if (this.joy && e.pointerId === this.joy.id) { this.joy = null; this.joyRun = false; this.move.x = 0; this.move.y = 0; this.hud?.joystick(false); return; }
+      if (this.pointer2 && e.pointerId === this.pointer2.id) { this.pointer2 = null; return; }
       if (this.pointer && e.pointerId === this.pointer.id) {
-        const p = this.pointer; this.pointer = null; this.attackHeld = false; this.hud?.aim(null);
-        if (!this.enabled) return;
+        const p = this.pointer; this.pointer = null; this.pointer2 = null; this.attackHeld = false; this.hud?.aim(null);
+        if (!this.enabled || p.pinch) return;
         const dx = p.x - p.x0, dy = p.y - p.y0, d = Math.hypot(dx, dy), held = performance.now() - p.t0;
         if (p.button === 2) return;
         if (d > 30) this.events.push({ type: 'throw', sx: dx / d, sy: dy / d, power: Math.min(1, d / 260) });
@@ -75,6 +86,8 @@ export class Input {
       }
     };
     c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+    // mouse wheel / trackpad pinch (ctrl+wheel) zoom
+    c.addEventListener('wheel', (e) => { if (!this.enabled) return; e.preventDefault(); const k = e.ctrlKey ? 0.01 : 0.0012; this.zoomFactor *= Math.exp(e.deltaY * k); }, { passive: false });
   }
   abilityPress() { if (this.abilityDown) return; this.abilityDown = true; this.abilityHoldT = 0; this.events.push({ type: 'abilityDown' }); }
   abilityRelease() { if (!this.abilityDown) return; this.abilityDown = false; this.events.push({ type: this.abilityHoldT < 0.3 ? 'abilityTap' : 'abilityRelease', held: this.abilityHoldT }); this.abilityHoldT = 0; }
@@ -91,4 +104,5 @@ export class Input {
     if (this.abilityDown) this.abilityHoldT += dt;
   }
   drain() { const e = this.events; this.events = []; return e; }
+  takeZoom() { const z = this.zoomFactor; this.zoomFactor = 1; return z; }
 }

@@ -34,8 +34,10 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 @keyframes boot { from { transform:translateX(-100%) } to { transform:translateX(250%) } }
 
 /* ---------- menu ---------- */
-#menu { z-index:10; display:flex; align-items:center; justify-content:center; padding:max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom)); overflow:auto; pointer-events:auto; }
-.menu-wrap { width:min(880px, 100%); margin:auto; display:flex; flex-direction:column; gap:10px; }
+#menu { z-index:10; display:flex; align-items:flex-end; justify-content:center; padding:max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom)); overflow:auto; pointer-events:none; }
+#menu > * { pointer-events:auto; }
+.menu-wrap { width:min(1040px, 100%); margin:auto auto 0; display:flex; flex-direction:column; gap:8px; }
+.menu-head { position:fixed; top:max(10px, env(safe-area-inset-top)); left:16px; right:16px; width:auto; }
 .menu-head { display:flex; justify-content:space-between; align-items:flex-end; padding:0 4px; }
 .brand { display:flex; align-items:baseline; gap:2px; flex-wrap:wrap; }
 .brand-word { font-family:var(--display); font-size:40px; line-height:1; letter-spacing:.04em; text-shadow:0 4px 30px rgba(0,0,0,.7); }
@@ -45,9 +47,9 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 .readout { background:var(--paper); border:1px solid var(--line); padding:6px 12px; font-family:var(--mono); font-size:10px; letter-spacing:.2em; color:var(--muted); min-width:120px; }
 .readout b { display:block; color:var(--fg); font-size:16px; letter-spacing:0; margin-top:2px; }
 .panel { position:relative; background:var(--paper); border:1px solid var(--line); padding:16px 14px 12px; backdrop-filter:blur(10px); box-shadow:0 30px 80px rgba(0,0,0,.6); }
-.panel-grid { display:grid; grid-template-columns:1fr 236px; gap:16px; }
+.panel-grid { display:grid; grid-template-columns:1.15fr 1fr 230px; gap:14px; align-items:start; }
 .seg { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-.seg button { display:flex; align-items:center; gap:10px; padding:7px 12px; border:1px solid var(--line); background:rgba(255,255,255,.03); font-family:var(--display); font-size:20px; letter-spacing:.06em; color:var(--muted); transition:all .15s; position:relative; }
+.seg button { display:flex; align-items:center; gap:10px; padding:6px 12px; border:1px solid var(--line); background:rgba(255,255,255,.03); font-family:var(--display); font-size:18px; letter-spacing:.06em; color:var(--muted); transition:all .15s; position:relative; }
 .seg button small { font-family:var(--mono); font-size:9px; letter-spacing:.2em; color:var(--dim); margin-left:auto; text-transform:uppercase; }
 .seg button .ico { width:26px; height:26px; }
 .seg button.on { color:#fff; border-color:var(--c); background:linear-gradient(90deg, color-mix(in srgb, var(--c) 35%, transparent), transparent); }
@@ -55,8 +57,10 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 .row-label { font-family:var(--mono); font-size:10px; letter-spacing:.3em; color:var(--muted); margin:10px 0 5px; display:flex; align-items:center; gap:8px; }
 .row-label span { color:var(--c); } .row-label::after { content:''; flex:1; height:1px; background:var(--line); }
 .cards { display:grid; gap:6px; }
-.cards.arch { grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); }
-.cards.weapons { grid-template-columns:repeat(5, 1fr); }
+.cards.arch { grid-template-columns:repeat(auto-fit, minmax(84px, 1fr)); }
+.cards.arch button { flex-direction:row; align-items:center; gap:8px; padding:7px 8px; } .cards.arch button b { font-size:13px; } .cards.arch button .ico.big { margin:0; width:22px; height:22px; }
+.cards.weapons { grid-template-columns:1fr; gap:4px; }
+.cards.weapons button { flex-direction:row; align-items:center; gap:10px; padding:6px 10px; } .cards.weapons .wname { display:flex; flex-direction:column; min-width:0; } .cards.weapons .wname small { font-family:var(--cond); font-size:10px; letter-spacing:0; text-transform:none; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px; } .cards.weapons em { margin-left:auto; } .cards.weapons .tier { position:static; } .cards.weapons .ico.big { margin:0; width:22px; height:22px; }
 .cards button { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:7px 9px 6px; border:1px solid var(--line); background:rgba(255,255,255,.03); text-align:left; transition:all .12s; }
 .cards button b { font-size:15px; letter-spacing:.03em; text-transform:uppercase; }
 .cards button small { font-family:var(--mono); font-size:9px; letter-spacing:.15em; color:var(--dim); text-transform:uppercase; }
@@ -72,7 +76,7 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 .brief-head .ico { width:28px; height:28px; color:var(--c); }
 .brief-head b { font-family:var(--display); font-size:18px; letter-spacing:.06em; display:block; }
 .brief-head span { font-family:var(--mono); font-size:9px; letter-spacing:.2em; color:var(--muted); text-transform:uppercase; }
-.brief p { margin:5px 0; font-size:12px; line-height:1.35; color:#d6d2c8; }
+.brief p { margin:4px 0; font-size:11px; line-height:1.3; color:#d6d2c8; }
 .abil { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .abil div { display:flex; gap:8px; align-items:center; font-size:12px; color:#d6d2c8; }
 .abil .ico { color:var(--c); width:20px; height:20px; }
@@ -82,13 +86,13 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 .bar { height:5px; background:rgba(255,255,255,.08); margin-top:3px; } .bar i { display:block; height:100%; background:var(--c); }
 .weapon-desc { display:flex; gap:8px; align-items:center; margin-top:6px; font-size:12px; color:var(--muted); min-height:18px; }
 .weapon-desc .ico { color:var(--a); }
-.col-side { display:flex; flex-direction:column; gap:10px; }
+.col-c { display:flex; flex-direction:column; gap:8px; } .col-c .join { width:100%; }
 .district { border:1px solid var(--line); background:rgba(0,0,0,.25); padding:10px; }
 .district-head { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
 .district-head .ico { color:var(--c); width:22px; height:22px; }
 .district-head b { font-family:var(--display); font-size:15px; letter-spacing:.05em; display:block; }
 .district-head span { font-family:var(--mono); font-size:8px; letter-spacing:.18em; color:var(--muted); }
-#menu-map { display:block; width:100%; max-height:200px; height:auto; object-fit:cover; border:1px solid var(--line); background:#12151c; }
+#menu-map { display:block; width:100%; max-height:120px; height:auto; object-fit:cover; border:1px solid var(--line); background:#12151c; }
 .legend { font-family:var(--mono); font-size:8px; letter-spacing:.1em; color:var(--muted); margin-top:6px; line-height:1.6; text-transform:uppercase; }
 .legend i { display:inline-block; width:8px; height:8px; background:var(--k); margin:0 4px 0 0; vertical-align:middle; }
 .rules { display:flex; flex-direction:column; gap:8px; font-size:11px; color:var(--muted); line-height:1.35; }
@@ -109,19 +113,18 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 .menu-foot .ico { color:var(--c); margin-right:4px; }
 .ghost { border:1px solid var(--line); padding:6px 10px; font-family:var(--mono); font-size:9px; letter-spacing:.2em; color:var(--muted); }
 .lobby-note { position:fixed; left:50%; top:12%; transform:translateX(-50%); z-index:30; background:var(--paper2); border:1px solid var(--c); padding:10px 16px; font-family:var(--mono); font-size:10px; letter-spacing:.2em; color:#fff; animation:pop .25s ease-out; pointer-events:none; }
-@media (max-width:820px) { .panel-grid { grid-template-columns:1fr; } .col-side { display:grid; grid-template-columns:150px 1fr; gap:10px; } .district canvas { width:130px; } .join-row { grid-template-columns:1fr 160px; } }
+@media (max-width:900px) { .panel-grid { grid-template-columns:1fr 1fr; } .col-c { grid-column:1 / -1; display:grid; grid-template-columns:150px 1fr 1fr; align-items:stretch; } .district canvas { max-height:90px; } }
 @media (max-width:600px) {
-  .brand-word { font-size:32px; } .brand-sub { display:none; } .readout { min-width:0; padding:4px 8px; } .readout b { font-size:13px; }
-  .panel { padding:14px 10px 10px; } .seg button { font-size:16px; padding:8px; } .seg button small { display:none; }
-  .cards.arch { grid-template-columns:repeat(2, 1fr); } .cards.weapons { grid-template-columns:repeat(3, 1fr); }
-  .cards button b { font-size:13px; } .brief p { font-size:12px; } .abil { grid-template-columns:1fr; }
-  .col-side { grid-template-columns:1fr; } .district canvas { width:100%; } .rules { display:none; }
-  .join-row { grid-template-columns:1fr 120px; position:sticky; bottom:-10px; background:var(--paper2); padding:8px 0 10px; margin:8px -10px -10px; padding-left:10px; padding-right:10px; border-top:1px solid var(--line); z-index:2; }
-  .join-main { font-size:20px; } .join-sub { font-size:9px; } .countdown { padding:6px 8px; gap:6px; } .countdown svg { width:34px; height:34px; } .countdown b { font-size:18px; } .countdown small { display:none; }
-  .cards.arch { grid-template-columns:repeat(3, 1fr); } .cards.arch button small { display:none; } .cards.arch button { align-items:center; text-align:center; }
-  .cards.weapons { grid-template-columns:repeat(5, 1fr); } .cards.weapons button { padding:6px 4px; align-items:center; } .cards.weapons button b { font-size:10px; text-align:center; width:100%; } .cards.weapons button em { font-size:11px; } .tier { display:none; }
-  .brief p { display:none; } .stats { display:none; } .menu-foot div { display:none; }
-  .district-head b { font-size:13px; } #menu-map { max-height:150px; }
+  #menu { padding-top:34vh; }
+  .menu-head { left:10px; right:10px; } .brand-word { font-size:30px; } .brand-sub { display:none; } .readout { min-width:0; padding:4px 8px; } .readout b { font-size:12px; }
+  .panel { padding:12px 8px 8px; } .panel-grid { grid-template-columns:1fr; gap:6px; }
+  .seg button { font-size:15px; padding:6px 8px; }
+  .cards.arch { grid-template-columns:repeat(3, 1fr); } .cards.arch button { flex-direction:column; text-align:center; gap:2px; padding:6px 4px; } .cards.arch button b { font-size:11px; }
+  .brief p { display:none; } .stats { display:none; } .brief { padding:6px 10px; }
+  .cards.weapons { grid-template-columns:repeat(5, 1fr); } .cards.weapons button { flex-direction:column; align-items:center; padding:6px 2px; gap:1px; } .cards.weapons .wname small { display:none; } .cards.weapons .wname b { font-size:10px; text-align:center; } .cards.weapons em { margin:0; font-size:11px; } .cards.weapons .tier { display:none; }
+  .col-c { display:grid; grid-template-columns:1fr 1.4fr; grid-template-areas:'cd join' 'map join'; gap:6px; } .district { grid-area:map; display:none; } .countdown { grid-area:cd; padding:6px 8px; gap:6px; } .countdown svg { width:32px; height:32px; } .countdown b { font-size:18px; } .countdown small { display:none; }
+  .col-c .join { grid-area:join; } .join-main { font-size:20px; } .join-sub { font-size:9px; }
+  .menu-foot { display:none; }
 }
 
 /* ---------- HUD ---------- */
