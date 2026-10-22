@@ -15,6 +15,7 @@ await page.goto('http://localhost:4173/', { waitUntil: 'load' });
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${outDir}/lobby.png` });
 await page.click('#btn-join'); await page.waitForTimeout(800);
+if (process.env.FORCE_MULT) await page.evaluate((m) => { const g = window.__game; const o = g.outcome; o.multiplier = m; o.payout = Math.round(g.stake * m * 100) / 100; g.director.o = o; const T = o.durationSec, natural = 0.005 * T + 0.0045 * T; g.payScale = Math.max(0.15, Math.min(12, m / natural)); }, +process.env.FORCE_MULT);
 const sample = () => page.evaluate(() => { const g = window.__game; const d = g.director; return { t: +g.time.toFixed(1), money: +g.money.toFixed(3), payout: g.outcome.payout, mult: +g.outcome.multiplier.toFixed(2), dur: +d.o.durationSec.toFixed(0), bias: +d.bias.toFixed(2), prog: +d.progress.toFixed(2), front: +g.meanFront().toFixed(1), ending: d.ending?.kind, pay: +(g.payScale || 0).toFixed(2), frozen: !!d.frozen, over: g.roundOver, reason: g.reason, hp: +g.player.hp.toFixed(0), ko: g.player.ko, kos: g.player.koCount, z: +g.player.pos.z.toFixed(1), alive: { r: g.characters.filter((c) => c.faction === 'rioter' && c.alive).length, p: g.characters.filter((c) => c.faction === 'peacekeeper' && c.alive).length }, chars: g.characters.length, stats: g.stats, log: g.debugLog.slice(-2) }; });
 let elapsed = 0;
 while (elapsed < +maxS) {

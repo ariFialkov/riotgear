@@ -64,15 +64,25 @@ Stakes per tier: $1, $2, $5, $10, $25. The balance is virtual and stored locally
 ## How the result is decided
 
 `src/game/rtp.js` draws the round's multiplier from a banded distribution tuned to a 96%
-return to player (tested in `tests/rtp.test.js`), giving a payout and a target duration.
-The Director (`src/game/director.js`) then compares the player's money with a target earning
-curve every frame and sets a bias that feeds bot strength, speed and aggression, the
-front-line push model, the strategies uncommanded groups pick, reinforcements arriving from
-the side streets and supply drops. Near the result it picks an ending that fits what is on
-screen (overrun & knocked out, snatched, gassed/torched, a stray round, or an orderly "riot
-dispersed" / "lines broken"), and a failsafe lands the final number exactly if the beat has
-not landed by itself. Every reward scales with the stake, so the payout distribution is
-stake independent.
+return to player (tested in `tests/rtp.test.js`), giving a payout and a target duration of
+roughly one to five minutes. The Director (`src/game/director.js`) compares the player's money
+with a target earning curve every frame and sets a bias that feeds bot strength, aggression
+and strategy choice, the contested perimeter, reinforcements and supply drops. A separate
+battle lean makes the fight visibly drift against you on losing bets and towards you on
+winning ones.
+
+How a round ends is decided by the bet:
+
+| Result | Share of rounds | Ending |
+| --- | --- | --- |
+| Lost the stake (below 1x) | about 72% | put down or arrested |
+| Small win (1x to 2x) | about 20% | your side is winning, but you are still put down or arrested |
+| Big win (2x and up, `BIG_WIN`) | about 7% | your side wins: riot dispersed / lines broken |
+
+Losing beats are mostly physical: snatch squads hunting a rioter, a mob or squad converging
+to beat the player down, gas or fire, and only rarely a stray rubber round or brick. The after
+action report states plainly whether the bet was won or lost, separately from how the round
+ended. Every reward scales with the stake, so the payout distribution is stake independent.
 
 ## Project layout
 

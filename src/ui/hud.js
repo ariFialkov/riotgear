@@ -153,14 +153,15 @@ export class HUD {
 export function renderResult(root, game, balance, onBack) {
   const o = game.outcome, s = game.stats, pl = game.player;
   const reason = { ko: ['KNOCKED OUT', 'skull'], arrested: ['ARRESTED', 'cuffs'], dispersed: ['RIOT DISPERSED', 'shield_small'], broken: ['LINES BROKEN', 'flag'], whistle: ['ROUND OVER', 'clock'] }[game.reason] || ['ROUND OVER', 'clock'];
-  const win = o.payout >= game.stake;
+  const win = o.payout > game.stake;
   const net = o.payout - game.stake;
   root.innerHTML = `
     <div class="report" style="--c:${pl.faction === 'rioter' ? '#ff4d2e' : '#3d8bff'}">
       <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
       <div class="hazard"></div>
       <div class="report-head"><span>AFTER ACTION REPORT · ${game.district || ''}</span><span>${fmtTime(game.time)} ON THE GROUND</span></div>
-      <div class="stamp ${win ? 'win' : 'loss'}">${icon(reason[1])}${reason[0]}</div>
+      <div class="verdict ${win ? 'win' : 'loss'}">${win ? 'BET WON' : 'BET LOST'}<span>${net >= 0 ? '+' : ''}${fmt(net)}</span></div>
+      <div class="stamp ${o.multiplier >= 2 ? 'win' : 'loss'}">${icon(reason[1])}${reason[0]}</div>
       <div class="payout ${win ? 'win' : 'loss'}">${fmt(o.payout)}</div>
       <div class="payout-sub">${o.multiplier.toFixed(2)}× on ${fmt(game.stake)} · ${net >= 0 ? '+' : ''}${fmt(net)} net · ${pl.arch.name} with ${pl.weapon.name}</div>
       <div class="report-grid">

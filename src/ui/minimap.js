@@ -75,7 +75,7 @@ export class Minimap {
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 4, 0, 6.28); ctx.stroke();
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 2, 0, 6.28); ctx.fill();
       const a = game.followCam ? game.followCam.yaw + Math.PI : pl.yaw, s = this.flip ? -1 : 1;
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.sin(a) * 8, y - Math.cos(a) * 8 * s); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.sin(a) * 8, y + Math.cos(a) * 8 * s); ctx.stroke();
     }
   }
 }

@@ -7,7 +7,7 @@
 // picks an "ending beat" that fits the situation (overrun & KO'd, snatched, gassed,
 // clipped by a stray round, or an orderly round end) so the final number lands on the
 // predetermined payout without looking scripted.
-import { targetProgress } from './rtp.js';
+import { targetProgress, BIG_WIN } from './rtp.js';
 
 export class Director {
   constructor(game, outcome) {
@@ -16,6 +16,16 @@ export class Director {
     this.log = [];
   }
   get progress() { return Math.min(1, this.game.money / this.o.payout); }
+  /**
+   * How the battle should visibly lean for the player's side, independent of the money control:
+   * losing bets drift against you, winning bets drift your way, big wins turn into a rout late on.
+   */
+  get lean() {
+    const m = this.o.multiplier, late = Math.min(1, this.t / this.o.durationSec);
+    if (m >= BIG_WIN) return 0.25 + 0.55 * late;
+    if (m >= 1) return 0.1 + 0.15 * late;
+    return -0.1 - 0.25 * late;
+  }
   update(dt) {
     const g = this.game; this.t += dt;
     const T = this.o.durationSec;
@@ -67,12 +77,10 @@ export class Director {
   }
   chooseEnding() {
     const g = this.game, pl = g.player; if (!pl) { this.ending = { kind: 'whistle', t: 0 }; return; }
-    // decide from what is actually on screen: is the player's side pushing the line / thinning the enemy?
-    const taken = pl.faction === 'rioter' ? g.R0 - g.meanFront() : g.meanFront() - g.R0;
-    const winning = taken > 5 || g.enemyAliveRatio() < 0.4;
-    const r = g.rng.next();
+    // The bet decides it: only a big win ends with the player's side winning the battle.
+    // Every other result (losses and small wins alike) ends with the player put down or arrested.
     let kind;
-    if (winning && r < 0.55) kind = pl.faction === 'peacekeeper' ? 'dispersed' : 'broken';
+    if (this.o.multiplier >= BIG_WIN) kind = pl.faction === 'peacekeeper' ? 'dispersed' : 'broken';
     else {
       // losing beats: mostly physical (beaten up / snatched), sometimes gas or fire, rarely a stray
       const u = g.rng.next();
@@ -108,7 +116,7 @@ export class Director {
         if (e.t > 7 && !e.sent2) { e.sent2 = true; g.strayShot(pl); }
         break;
       }
-      case 'dispersed': case 'broken': this.bias = Math.max(this.bias, 0.6); g.playerThreat = -10; break;
+      case 'dispersed': case 'broken': this.bias = Math.max(this.bias, 0.6); g.playerThreat = -14; break;
       default: break;
     }
   }

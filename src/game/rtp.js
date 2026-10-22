@@ -11,6 +11,9 @@
 import { RNG } from '../core/rng.js';
 
 export const RTP = 0.96;
+/** Only results at or above this multiplier end with the player's side winning the battle
+ *  (riot dispersed / lines broken). Everything below ends with the player put down or arrested. */
+export const BIG_WIN = 2.0;
 
 const BANDS = [
   { p: 0.4634, lo: 0.10, hi: 0.55, curve: 1.0 },

@@ -109,7 +109,11 @@ export class Game {
     const s = faction === this.playerFaction ? b : -b;
     return 1 + 0.55 * s;
   }
-  biasFor(faction) { return this.director ? (faction === this.playerFaction ? this.director.bias : -this.director.bias) : 0; }
+  biasFor(faction) {
+    if (!this.director) return 0;
+    const b = Math.max(-1, Math.min(1, this.director.bias + this.director.lean));
+    return faction === this.playerFaction ? b : -b;
+  }
   enemyAliveRatio() { const e = this.characters.filter((c) => c.faction === this.enemyFaction); return e.filter((c) => c.alive).length / Math.max(1, e.length); }
   reinforce(faction, n) {
     const grp = this.groups.filter((g) => g.faction === faction && !g.quelled).sort((a, b) => a.conscious().length - b.conscious().length)[0]; if (!grp) return;
@@ -332,6 +336,7 @@ export class Game {
     for (let k = 0; k < n; k++) {
       const f = this.fronts[k];
       let net = (P[k] - R[k]) * 0.045; // positive = perimeter grows outward (peacekeepers winning)
+      if (this.director) net += this.director.lean * (this.playerFaction === 'peacekeeper' ? 0.35 : -0.35);
       if (P[k] > 0 && R[k] === 0) net += 0.35; if (R[k] > 0 && P[k] === 0) net -= 0.5;
       // an empty sector slowly relaxes back towards the core's natural perimeter
       if (P[k] === 0 && R[k] === 0) net += (this.R0 - f.r) * 0.01;

@@ -186,6 +186,9 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 #result { z-index:20; display:flex; align-items:center; justify-content:center; background:rgba(5,6,10,.55); backdrop-filter:blur(6px); padding:12px; }
 .report { position:relative; background:var(--paper2); border:1px solid var(--line); padding:26px 26px 22px; width:min(520px, 100%); text-align:center; box-shadow:0 30px 80px rgba(0,0,0,.7); }
 .report-head { display:flex; justify-content:space-between; font-family:var(--mono); font-size:9px; letter-spacing:.25em; color:var(--muted); margin-bottom:14px; }
+.verdict { font-family:var(--display); font-size:22px; letter-spacing:.2em; margin-bottom:10px; display:flex; justify-content:center; align-items:baseline; gap:14px; }
+.verdict span { font-family:var(--mono); font-size:15px; letter-spacing:0; }
+.verdict.win { color:var(--ok); } .verdict.loss { color:var(--bad); }
 .stamp { display:inline-flex; align-items:center; gap:10px; font-family:var(--display); font-size:30px; letter-spacing:.1em; padding:4px 16px; border:3px solid currentColor; transform:rotate(-3deg); }
 .stamp.win { color:var(--ok); } .stamp.loss { color:var(--bad); }
 .payout { font-family:var(--display); font-size:80px; line-height:1; margin:14px 0 4px; }
