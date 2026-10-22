@@ -26,7 +26,7 @@ export class Character {
     this.ko = false; this.koTimer = 0; this.koCount = 0; this.arrested = false; this.removed = false;
     this.stun = 0; this.blind = 0; this.slow = 0; this.burn = 0; this.flash = 0;
     this.attackCd = 0; this.comboTarget = null; this.comboCount = 0; this.hitsSincePulse = 0;
-    this.vy = 0; this.y = 0; this.onRoof = null; this.climbing = null; this.ducking = false; this.blocking = false;
+    this.vy = 0; this.y = 0; this.onRoof = null; this.airborne = false; this.climbing = null; this.ducking = false; this.blocking = false;
     this.carried = null; this.carriedBy = null; this.heldProp = null; this.holdCharge = 0;
     this.group = null; this.slot = null; this.strategy = null; this.commandOf = null;
     this.moveSpeed = 0; this.moving = false; this.stance = 0;
@@ -35,7 +35,7 @@ export class Character {
     this.vel = new THREE.Vector2(); this.stuckT = 0; this.lookYaw = 0;
     // individuality: every bot moves, reacts and commits a little differently
     const courageBase = { brawler: 0.9, instigator: 0.7, looter: 0.45, rioter_npc: 0.5, front_echelon: 0.85, snatch_squad: 0.8, commander: 0.7, grenadier: 0.4, peacekeeper_npc: 0.55 }[archetype] ?? 0.5;
-    this.traits = { speed: this.rng.float(0.86, 1.14), courage: Math.max(0.1, Math.min(1, courageBase + this.rng.float(-0.18, 0.18))), spacing: this.rng.float(0.95, 1.45), react: this.rng.float(0.1, 0.5), wanderPh: this.rng.float(0, 6.28), fidgetT: this.rng.float(2, 7), hurtAt: this.rng.float(0.28, 0.45) };
+    this.traits = { speed: this.rng.float(0.86, 1.14), courage: Math.max(0.1, Math.min(1, courageBase + this.rng.float(-0.18, 0.18))), spacing: this.rng.float(0.95, 1.45), react: this.rng.float(0.1, 0.5), wanderPh: this.rng.float(0, 6.28), fidgetT: this.rng.float(2, 7), hurtAt: this.rng.float(0.28, 0.45), climber: archetype === 'looter' && this.rng.chance(0.65) };
     this.reach = this.weapon.range + (this.arch.build === 'heavy' ? 0.15 : 0);
     this.conscious = true;
     this.fireAmmo = this.arch.gun ? 8 : 0; this.reloadT = 0;
@@ -59,15 +59,23 @@ export class Character {
   distTo(o) { return Math.hypot(o.pos.x - this.pos.x, o.pos.z - this.pos.z); }
 
   /** Move in world xz with collision, roof constraints. dx/dz already scaled by dt. */
+  /** Move in world xz. On the ground: street collision. Off the ground: the rooftop height map. */
   move(dx, dz) {
-    if (this.onRoof) {
-      const r = this.onRoof;
-      const nx = this.pos.x + dx, nz = this.pos.z + dz;
-      if (nx > r.x0 + 0.4 && nx < r.x1 - 0.4 && nz > r.z0 + 0.4 && nz < r.z1 - 0.4) { this.pos.x = nx; this.pos.z = nz; }
-      else if (this.stepOffRoof) { this.pos.x = nx; this.pos.z = nz; this.onRoof = null; this.falling = true; }
+    if (this.y > 0.05 || this.vy > 0) {
+      const looter = this.arch.id === 'looter';
+      const step = this.airborne ? (looter ? 1.25 : 0.35) : 0.6; // airborne looters catch ledges and mantle up
+      this.world.moveElevated(this.pos, dx, dz, this.isPlayer ? this.radius : this.radius * 0.6, this.y, step, this.isPlayer ? Infinity : 3.5);
       return;
     }
     this.world.moveWithCollision(this.pos, dx, dz, this.radius);
+  }
+  /** Touching down after a jump or drop: hard landings hurt (looters roll out of them). */
+  land(vy) {
+    if (vy < -11) {
+      const dmg = (-vy - 11) * 4 * (this.arch.id === 'looter' ? 0.35 : 1);
+      if (dmg > 2) this.takeHit(dmg, null, 0, { silent: true, stun: Math.min(0.8, dmg / 60) });
+      this.game.effects.dust(this.pos.x, this.y + 0.1, this.pos.z, 8, 0.8);
+    }
   }
 
   takeHit(dmg, from, knock = 1, opts = {}) {
@@ -144,12 +152,20 @@ export class Character {
     }
     // vertical: jump / fall / roof
     if (this.climbing) {
-      // handled by controller (y moves)
-    } else if (this.onRoof) {
-      this.y = this.onRoof.roofY; this.vy = 0;
-    } else {
-      this.vy -= 22 * dt; this.y += this.vy * dt;
-      if (this.y <= 0) { if (this.falling && this.vy < -9) this.takeHit(10, null, 0, { silent: true }); this.y = 0; this.vy = 0; this.falling = false; }
+      this.airborne = false; // y driven by climbStep
+    } else if (!this.carriedBy) {
+      const ground = this.world.groundUnder(this.pos.x, this.pos.z, 0.22);
+      if (this.vy > 0 || this.y > ground + 0.6) {
+        this.vy -= 22 * dt; this.y += this.vy * dt;
+        if (this.y <= ground) { this.y = ground; this.land(this.vy); this.vy = 0; }
+      } else { this.y = ground; this.vy = 0; } // standing, stepping down small ledges, or mantling up
+      this.airborne = this.y > ground + 0.02;
+      this.onRoof = !this.airborne && ground > 0.5 ? this.world.surfaceObjAt(this.pos.x, this.pos.z) : null;
+      // rooftop launch points: looters rip up roof tiles for ammo
+      if (this.onRoof && this.arch.id === 'looter' && this.alive) {
+        this.tileT = (this.tileT ?? 6) - dt;
+        if (this.tileT <= 0) { this.tileT = this.isPlayer ? 5 : 7; if ((this.inventory.rock || 0) < 4) { this.inventory.rock = (this.inventory.rock || 0) + 1; if (this.isPlayer) { this.game.hud.refreshAmmo(); this.game.hud.popup('Roof tile', 0); } } }
+      }
     }
     if (this.carriedBy) {
       const c = this.carriedBy; this.ko = true; this.koTimer = 2;
@@ -161,7 +177,7 @@ export class Character {
     H.update(dt, {
       speed: this.moveSpeed, moving: this.moving, duck: this.ducking, jumpY: 0, ko: this.ko, climbing: !!this.climbing,
       blocking: this.blocking, carrying: !!this.carried, holding: !!this.heldProp, stunned: this.stun > 0 && !this.ko, stance: this.stance,
-      lookYaw: this.lookYaw, hurt: this.hp < this.maxHp * 0.35,
+      lookYaw: this.lookYaw, hurt: this.hp < this.maxHp * 0.35, airborne: this.airborne && !this.ko,
     });
     if (this.heldProp) {
       const p = this.heldProp; p.group.position.set(this.pos.x, this.y + this.humanoid.height + 0.2, this.pos.z); p.group.rotation.y = this.yaw;

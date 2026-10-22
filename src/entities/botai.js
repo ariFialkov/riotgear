@@ -47,8 +47,9 @@ function steer(c, dt) {
   const stop = c.engage ? Math.max(0.5, c.reach - 0.35) : 0.6;
   c.blocking = !!c.wantBlock;
   let fx = 0, fz = 0, wantMove = dist > stop && !c.holdStill;
+  const elevated = c.y > 0.5;
   if (wantMove) {
-    const wp = c.unstick ? null : waypoint(c, tx, tz);
+    const wp = c.unstick || elevated ? null : waypoint(c, tx, tz);
     if (wp) { dx = wp.x - c.pos.x; dz = wp.z - c.pos.z; dist = Math.hypot(dx, dz) || 1; }
     // arrive: ease off in the last couple of metres unless chasing
     const urgency = c.engage ? 1 : Math.min(1, dist / 2.5);
@@ -58,6 +59,7 @@ function steer(c, dt) {
   let ax = 0, az = 0, an = 0;
   for (const o of g.nearby(c, 3)) {
     if (!o.alive && !o.ko) continue;
+    if (Math.abs(o.y - c.y) > 1.5) continue;
     const ox = c.pos.x - o.pos.x, oz = c.pos.z - o.pos.z, l = Math.hypot(ox, oz) || 0.05;
     const friend = o.faction === c.faction;
     const want = friend ? T.spacing * (c.moving ? 0.85 : 1) : (c.engage ? 0.7 : 1.6);
@@ -66,13 +68,13 @@ function steer(c, dt) {
   }
   if (an && wantMove && !c.engage) { const al = Math.hypot(ax, az) || 1; fx += (ax / al) * 0.35; fz += (az / al) * 0.35; }
   // cohesion: don't straggle far from the group
-  if (c.group && !c.engage) {
+  if (c.group && !c.engage && !elevated) {
     const gc = c.group.centroid; const cx = gc.x - c.pos.x, cz = gc.z - c.pos.z, cl = Math.hypot(cx, cz);
     if (cl > 10) { const k = Math.min(1, (cl - 10) / 10) * 0.8; fx += (cx / cl) * k; fz += (cz / cl) * k; }
   }
   // walls: probe ahead and slide along the free side
   const vl = Math.hypot(c.vel.x, c.vel.y);
-  if (vl > 0.3) {
+  if (vl > 0.3 && !elevated) {
     const ux = c.vel.x / vl, uz = c.vel.y / vl;
     if (world.blockedAt(c.pos.x + ux * 1.3, c.pos.z + uz * 1.3)) {
       const lx = -uz, lz = ux;
@@ -83,7 +85,7 @@ function steer(c, dt) {
     }
   }
   // a little wander so nobody walks a perfectly straight line
-  if (wantMove && !c.engage) { const w = Math.sin(g.time * 0.9 + T.wanderPh) * 0.22; fx += -dz / (dist || 1) * w; fz += dx / (dist || 1) * w; }
+  if (wantMove && !c.engage && !elevated) { const w = Math.sin(g.time * 0.9 + T.wanderPh) * 0.22; fx += -dz / (dist || 1) * w; fz += dx / (dist || 1) * w; }
 
   // turn the force into a target velocity, then accelerate towards it
   const fl = Math.hypot(fx, fz);
@@ -98,10 +100,10 @@ function steer(c, dt) {
   const sp = Math.hypot(c.vel.x, c.vel.y);
   if (sp > 0.15) {
     const before = c.pos.x, beforeZ = c.pos.z;
-    c.stepOffRoof = false; c.move(c.vel.x * dt, c.vel.y * dt);
+    c.move(c.vel.x * dt, c.vel.y * dt);
     const moved = Math.hypot(c.pos.x - before, c.pos.z - beforeZ);
     if (wantMove && moved < sp * dt * 0.3) c.stuckT += dt; else c.stuckT = 0;
-    if (c.stuckT > 1.2) unstick(c);
+    if (c.stuckT > 1.2) { if (elevated) { c.roofPlan = null; c.stuckT = 0; } else unstick(c); }
   } else c.stuckT = 0;
   c.moving = sp > 0.3; c.moveSpeed = sp;
   // facing: the person you're fighting, otherwise where you're going; the head tracks threats
@@ -153,17 +155,8 @@ function decide(c) {
     return;
   }
   for (const col of world.collectibles) { if (col.alive && Math.hypot(col.x - c.pos.x, col.z - c.pos.z) < 1.1) g.pickupCollectible(c, col); }
-  if (c.onRoof) {
-    const r = c.onRoof; const C = world.center;
-    const ex = C.x < r.x0 ? r.x0 + 1 : C.x > r.x1 ? r.x1 - 1 : Math.max(r.x0 + 1, Math.min(r.x1 - 1, c.pos.x));
-    const ez = C.z < r.z0 ? r.z0 + 1 : C.z > r.z1 ? r.z1 - 1 : Math.max(r.z0 + 1, Math.min(r.z1 - 1, c.pos.z));
-    setDesired(ex, ez, true);
-    const t = nearestEnemy(c, 40); c.target = t;
-    if (t && c.inventory.rock > 0 && rng.chance(0.18)) throwAt(c, 'rock', t);
-    else if (t && c.inventory.molotov > 0 && rng.chance(0.05)) throwAt(c, 'molotov', t);
-    if (!s?.climb || s.climb < 0.3) { if (rng.chance(0.05)) startDescend(c); }
-    return;
-  }
+  if (c.climbCd > 0) c.climbCd -= DECIDE;
+  if (c.onRoof) { roofDecide(c, setDesired); return; }
   if (c.huntT > 0) { c.huntT -= DECIDE; if (c.huntT <= 0 || !c.hunting?.alive) c.hunting = null; }
   const t = c.hunting && c.hunting.alive && !c.hunting.carriedBy ? c.hunting : nearestEnemy(c, 30); c.target = t;
   const dT = t ? c.distTo(t) : 1e9;
@@ -216,17 +209,19 @@ function decide(c) {
     }
   }
   if (c.snatchCd) c.snatchCd = Math.max(0, c.snatchCd - DECIDE);
-  if (A === 'looter' && (s?.climb ?? 0) > 0.5 && !c.climbCd) {
-    const b = nearestClimbable(c, 26);
+  const nearAction = grp && Math.abs(world.distToCenter(c.pos.x, c.pos.z) - grp.frontR()) < 45 && grp.phase !== 'loot';
+  if (A === 'looter' && nearAction && t && dT < 38 && (((s?.climb ?? 0) > 0.5) || T.climber) && !(c.climbCd > 0) && !c.airborne) {
+    const b = nearestClimbable(c, 30, t);
     if (b) {
       const tx = Math.max(b.x0, Math.min(b.x1, c.pos.x)), tz = Math.max(b.z0, Math.min(b.z1, c.pos.z));
       const ox = c.pos.x - tx, oz = c.pos.z - tz, l = Math.hypot(ox, oz) || 1;
-      setDesired(tx + (ox / l) * 0.9, tz + (oz / l) * 0.9, true);
-      if (l < 1.3) {
+      if (l < 1.7) {
         c.faceTowards(tx, tz, 1, 1);
         const f = c.forward(); const hit = world.climbableAt(c.pos.x, c.pos.z, f.x, f.y);
         if (hit) { startClimb(c, hit); return; }
       }
+      const ap = world.nearestWalkable(tx + (ox / l) * 1.0, tz + (oz / l) * 1.0, 3);
+      setDesired(ap.x, ap.z, true);
       return;
     }
   }
@@ -350,45 +345,121 @@ function nearestEnemy(c, maxD) {
   }
   return best;
 }
-function nearestClimbable(c, maxD) {
-  const w = c.game.world; let best = null, bd = maxD;
-  for (const b of w.buildings) {
-    if (!b.front || !b.climbable || !b.alive) continue;
-    if (c.game.beyond({ pos: { x: b.cx, z: b.cz }, faction: c.faction }) > 14) continue;
+function nearestClimbable(c, maxD, enemy = null) {
+  const w = c.game.world, g = c.game; let best = null, bd = maxD;
+  for (const b of w.surfaces) {
+    if (!b.climbable || !b.alive) continue;
+    const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
+    const depth = g.beyond({ pos: { x: cx, z: cz }, faction: c.faction });
+    if (depth > 10 || depth < -30) continue; // close to the line, on our side of it
     const dx = Math.max(b.x0 - c.pos.x, 0, c.pos.x - b.x1), dz = Math.max(b.z0 - c.pos.z, 0, c.pos.z - b.z1);
-    const d = Math.hypot(dx, dz) + (b.occupants || 0) * 6;
+    let d = Math.hypot(dx, dz) + (b.occupants || 0) * 5 + Math.abs(depth + 8) * 0.3;
+    if (enemy) { // a roof that overlooks the enemy: within throwing range of them
+      const ex = Math.max(b.x0 - enemy.pos.x, 0, enemy.pos.x - b.x1), ez = Math.max(b.z0 - enemy.pos.z, 0, enemy.pos.z - b.z1);
+      const de = Math.hypot(ex, ez); if (de > 30) continue; d += de * 0.4;
+    }
     if (d < bd) { bd = d; best = b; }
   }
   return best;
 }
 
+/**
+ * On the rooftops: run across connected roofs to the edge with the best view of the enemy, then hold
+ * it as a launch point (roof tiles keep the rocks coming) and plant a rally banner. Climb down when
+ * the strategy no longer wants the high ground or the bot is hurt.
+ */
+function roofDecide(c, setDesired) {
+  const g = c.game, world = g.world, grp = c.group, s = grp?.strategy, rng = c.rng;
+  const t = nearestEnemy(c, 70); c.target = t;
+  const dT = t ? c.distTo(t) : 1e9;
+  c.roofT = (c.roofT ?? 0) - DECIDE;
+  c.idleUp = dT < 36 ? 0 : (c.idleUp || 0) + DECIDE; // nothing in range for a while: the fight moved on
+  const leave = (s && s.climb < 0.3 && !c.traits.climber) || s?.regroup || c.hp < c.maxHp * 0.3 || c.idleUp > 14 || (c.roofTime = (c.roofTime || 0) + DECIDE) > 80;
+  const want = leave ? 'exit' : 'vantage';
+  if (!c.roofPlan || c.roofT <= 0 || c.roofPlan.want !== want) {
+    const aim = want === 'exit' ? (grp ? grp.goal : world.center) : (t ? t.pos : world.center);
+    c.roofPlan = world.roofPlan(c.pos.x, c.pos.z, aim.x, aim.z); c.roofT = rng.float(3, 5);
+    if (c.roofPlan) { c.roofPlan.want = want; c.roofPlan.i = 0; }
+  }
+  const plan = c.roofPlan;
+  if (plan) {
+    // follow the path a couple of cells ahead
+    while (plan.i < plan.path.length - 1 && Math.hypot(plan.path[plan.i].x - c.pos.x, plan.path[plan.i].z - c.pos.z) < 1.2) plan.i++;
+    const wp = plan.path[Math.min(plan.path.length - 1, plan.i + 1)];
+    const dEnd = Math.hypot(plan.end.x - c.pos.x, plan.end.z - c.pos.z), atEnd = dEnd < 1.0;
+    // watchdog: if the route stops getting shorter, settle for what's reachable from here
+    if (plan.best === undefined || dEnd < plan.best - 0.3) { plan.best = dEnd; plan.bestT = g.time; }
+    if (!atEnd && g.time - plan.bestT > 5) {
+      if (want === 'exit') { const ex = world.roofExitNear(c.pos.x, c.pos.z, 4); if (ex) { startDescend(c, ex); return; } }
+      else { plan.end = { x: c.pos.x, z: c.pos.z }; plan.path = [plan.end]; plan.i = 0; }
+    }
+    if (!atEnd) { c.running = true; setDesired(wp.x, wp.z, true); return; }
+    if (want === 'exit') { if (plan.exit) startDescend(c, plan.exit); else c.roofT = 0; return; }
+  } else if (want === 'exit') {
+    const ex = world.roofExitNear(c.pos.x, c.pos.z, 2.5); if (ex) { startDescend(c, ex); return; }
+  }
+  // holding a launch point
+  c.holdStill = true; setDesired(c.pos.x, c.pos.z, true);
+  const sf = c.onRoof;
+  if (sf && !sf.banner && world.banners < 6 && !c.humanoid.busy) plantBanner(c, sf);
+  c.throwCd = (c.throwCd ?? rng.float(0.5, 2)) - DECIDE;
+  if (t && dT < 36) {
+    c.faceTowards(t.pos.x, t.pos.z, 1, 1);
+    if (c.throwCd <= 0 && !c.humanoid.busy) {
+      c.throwCd = rng.float(2.2, 4.0);
+      if (c.inventory.molotov > 0 && rng.chance(0.18)) throwAt(c, 'molotov', t);
+      else if (c.inventory.rock > 0) throwAt(c, 'rock', t);
+    }
+  }
+}
+
+function plantBanner(c, sf) {
+  const g = c.game, world = g.world;
+  sf.banner = true; world.banners++;
+  c.humanoid.play('rally', { dur: 1.1, variant: 'rally' });
+  const grp = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6), new THREE.MeshLambertMaterial({ color: '#2a2a2a' }));
+  pole.position.y = 1.3; grp.add(pole);
+  const cloth = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 0.03), new THREE.MeshLambertMaterial({ color: c.rng.pick(['#c62828', '#111111', '#ef6c00']) }));
+  cloth.position.set(0.58, 2.2, 0); grp.add(cloth);
+  const tip = new THREE.Object3D(); tip.position.y = 2.6; grp.add(tip);
+  grp.position.set(c.pos.x, c.y, c.pos.z); grp.rotation.y = c.yaw + Math.PI / 2;
+  world.group.add(grp);
+  g.effects.smokeStick(tip, '#ff2d55');
+  g.hud.feed(`${c.name} took the high ground`);
+}
+
 export function startClimb(c, hit) {
   c.climbing = { target: hit.target, roofY: hit.roofY, x0: hit.x0, x1: hit.x1, z0: hit.z0, z1: hit.z1, dirY: 1 };
-  c.moving = false; c.moveSpeed = 0; c.ducking = false; c.vel.set(0, 0);
+  c.moving = false; c.moveSpeed = 0; c.ducking = false; c.vel?.set(0, 0); c.vy = 0;
   hit.target.occupants = (hit.target.occupants || 0) + 1;
+  // face the wall
+  const tx = Math.max(hit.x0, Math.min(hit.x1, c.pos.x)), tz = Math.max(hit.z0, Math.min(hit.z1, c.pos.z));
+  c.faceTowards(tx, tz, 1, 1);
 }
-export function startDescend(c) {
-  const r = c.onRoof; if (!r) return;
-  const ex = Math.abs(c.pos.x - r.x0) < Math.abs(c.pos.x - r.x1) ? r.x0 : r.x1;
-  const ez = Math.abs(c.pos.z - r.z0) < Math.abs(c.pos.z - r.z1) ? r.z0 : r.z1;
-  const useX = Math.abs(c.pos.x - ex) < Math.abs(c.pos.z - ez);
-  if (useX) { c.pos.x = ex + (ex === r.x0 ? -0.55 : 0.55); } else { c.pos.z = ez + (ez === r.z0 ? -0.55 : 0.55); }
-  c.climbing = { target: r.target || r, roofY: r.roofY, x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, dirY: -1 };
-  c.onRoof = null;
+/** Start climbing down at a roof exit (from world.roofExitNear / roofPlan): hang off the wall over the street. */
+export function startDescend(c, exit) {
+  if (!exit) return;
+  c.pos.x = exit.x; c.pos.z = exit.z;
+  c.climbing = { target: exit.sf?.target || exit.sf, roofY: c.y, x0: exit.edgeX ?? exit.x, x1: exit.edgeX ?? exit.x, z0: exit.edgeZ ?? exit.z, z1: exit.edgeZ ?? exit.z, dirY: -1, down: true };
+  c.onRoof = null; c.vy = 0; c.vel?.set(0, 0); c.roofPlan = null;
+  if (exit.edgeX !== undefined) c.faceTowards(exit.edgeX, exit.edgeZ, 1, 1);
 }
 export function climbStep(c, dt, dirInput = null) {
   const cl = c.climbing; if (!cl) return;
   const dirY = dirInput ?? cl.dirY;
-  c.moving = true; c.moveSpeed = 1;
-  if (dirY === 0) { c.moving = false; return; }
-  c.y += dirY * 2.4 * dt;
-  if (c.y >= cl.roofY) {
-    c.y = cl.roofY; c.onRoof = { roofY: cl.roofY, x0: cl.x0, x1: cl.x1, z0: cl.z0, z1: cl.z1, target: cl.target }; c.climbing = null;
-    const cx = (cl.x0 + cl.x1) / 2, cz = (cl.z0 + cl.z1) / 2;
-    const dx = cx - c.pos.x, dz = cz - c.pos.z, l = Math.hypot(dx, dz) || 1;
-    c.pos.x += (dx / l) * 1.2; c.pos.z += (dz / l) * 1.2;
+  c.moving = dirY !== 0; c.moveSpeed = dirY !== 0 ? 1 : 0;
+  if (dirY === 0) return;
+  const speed = c.arch.id === 'looter' ? 3.2 : 2.4;
+  c.y += dirY * speed * dt;
+  if (dirY > 0 && c.y >= cl.roofY - 0.05) {
+    // pull up over the edge onto whatever roof is there
+    const px = Math.max(cl.x0, Math.min(cl.x1, c.pos.x)), pz = Math.max(cl.z0, Math.min(cl.z1, c.pos.z));
+    let ix = px - c.pos.x, iz = pz - c.pos.z; const l = Math.hypot(ix, iz) || 1; ix /= l; iz /= l;
+    c.pos.x = px + ix * 0.7; c.pos.z = pz + iz * 0.7;
+    c.y = c.world.groundUnder(c.pos.x, c.pos.z, 0.15); c.vy = 0; c.climbing = null;
   } else if (c.y <= 0) {
-    c.y = 0; c.climbing = null; c.climbCd = 3;
+    c.y = 0; c.climbing = null; c.climbCd = 12;
     if (cl.target) cl.target.occupants = Math.max(0, (cl.target.occupants || 0) - 1);
   }
 }

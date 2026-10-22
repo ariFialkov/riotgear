@@ -63,7 +63,7 @@ export class Projectiles {
         if (p.pos.y <= 0.05) { hit = { ground: true }; break; }
         if (p.pos.y < 30 && g.world.blockedAt(p.pos.x, p.pos.z) && p.t > 0.08) {
           const b = g.world.buildingNear(p.pos.x, p.pos.z, 0.6);
-          if (b && b.h > p.pos.y) { hit = { building: b }; break; }
+          if (b && g.world.heightAt(p.pos.x, p.pos.z) >= p.pos.y) { hit = { building: b }; break; }
           const prop = g.world.nearestProp(p.pos.x, p.pos.z, 1.6, (q) => q.blocking && q !== p.prop);
           if (prop && p.pos.y < prop.height + 0.5) { hit = { prop }; break; }
           if (!b && !prop) { hit = { ground: true }; break; }

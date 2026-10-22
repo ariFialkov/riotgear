@@ -61,10 +61,10 @@ export const ARCHETYPES = {
   },
   looter: {
     id: 'looter', faction: 'rioter', name: 'Looter',
-    blurb: 'Slim and agile, bandana, spray paint on the belt. Climbs anything and pockets anything small.',
+    blurb: 'Slim and agile, bandana, spray paint on the belt. Climbs any wall, runs the rooftops and leaps the streets between them, rips up roof tiles to throw, and pockets anything small.',
     stats: { hp: 0.9, speed: 1.3, dmg: 0.85, mass: 0.85 },
     build: 'agile', spraycan: true,
-    ability: { tap: 'Loot small prop', hold: 'Climb (move fwd/back)' },
+    ability: { tap: 'Loot small prop', hold: 'Climb up / down a wall' },
     projectiles: { rock: 3, molotov: 0 },
   },
   brawler: {

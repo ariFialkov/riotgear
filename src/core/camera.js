@@ -28,15 +28,14 @@ export class FollowCamera {
       this.yaw += dm; this.manualYaw -= dm;
     }
     const h = target.y + 1.5 + (target.ducking ? -0.3 : 0);
-    let dist = this.dist + (target.onRoof ? 2 : 0);
-    // pull in if the camera would be inside a building
-    const bx = target.pos.x + Math.sin(this.yaw) * dist, bz = target.pos.z + Math.cos(this.yaw) * dist;
-    for (let t = 1; t >= 0.25; t -= 0.1) {
+    let dist = this.dist + (target.y > 0.5 ? 1.2 : 0);
+    // walk out from the character along the camera ray; stop just before anything taller than the ray
+    const lift = dist * this.pitch + 0.6; let free = 1;
+    for (let t = 0.1; t <= 1.0001; t += 0.05) {
       const x = target.pos.x + Math.sin(this.yaw) * dist * t, z = target.pos.z + Math.cos(this.yaw) * dist * t;
-      const b = this.world.buildingNear(x, z, 0.1);
-      if (!b || (target.onRoof && h + dist * t * this.pitch > b.h)) { dist *= t; break; }
-      if (t <= 0.3) dist *= 0.3;
+      if (this.world.heightAt(x, z) > h + lift * t - 0.35) { free = Math.max(0.18, t - 0.08); break; }
     }
+    dist *= free;
     const want = new THREE.Vector3(target.pos.x + Math.sin(this.yaw) * dist, h + dist * this.pitch + 0.6, target.pos.z + Math.cos(this.yaw) * dist);
     this.pos.lerp(want, Math.min(1, dt * 7));
     const lookWant = new THREE.Vector3(target.pos.x - Math.sin(this.yaw) * 2.5, h, target.pos.z - Math.cos(this.yaw) * 2.5);

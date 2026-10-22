@@ -46,6 +46,7 @@ export class World {
     // edges. The contested perimeter is tracked per angular sector around the centre.
     this.center = { x: 0, z: 2 }; this.R0 = 40; this.SECTORS = 8;
     this.generate();
+    this.buildSurfaces();
     this.buildCoarse();
   }
   sectorOf(x, z) { const a = Math.atan2(z - this.center.z, x - this.center.x); return ((Math.round(a / (2 * Math.PI / this.SECTORS)) % this.SECTORS) + this.SECTORS) % this.SECTORS; }
@@ -143,6 +144,137 @@ export class World {
     }
     while (picked.length < n) picked.push(this.nearestWalkable(rng.float(-80, 80), rng.pick([-118, 118]), 20));
     return picked;
+  }
+  // ---------- rooftops: a walkable height map over every building and climbable monument ----------
+  buildSurfaces() {
+    this.surf = new Float32Array(this.gw * this.gd); this.surfId = new Int16Array(this.gw * this.gd).fill(-1); this.surfaces = [];
+    this.banners = 0;
+    for (const b of this.buildings) {
+      b.target = b; b.climbable = true; b.roofY = b.h; b.rise = Math.min(3, (b.z1 - b.z0) * 0.35);
+      const alongX = (b.x1 - b.x0) >= (b.z1 - b.z0);
+      b.heightAt = (x, z) => {
+        if (!b.alive) return 1.0; // rubble
+        const k = b.clutter; if (k && x > k.x0 && x < k.x1 && z > k.z0 && z < k.z1) return k.top; // tank / AC box
+        if (!b.pitched) return b.h;
+        const half = alongX ? (b.z1 - b.z0) / 2 : (b.x1 - b.x0) / 2;
+        const d = alongX ? Math.abs(z - (b.z0 + b.z1) / 2) : Math.abs(x - (b.x0 + b.x1) / 2);
+        return b.h + b.rise * Math.max(0, 1 - d / half);
+      };
+      this.addSurface(b);
+    }
+    for (const p of this.props) if (p.climbable) {
+      const sf = { x0: p.x - p.halfW, x1: p.x + p.halfW, z0: p.z - p.halfD, z1: p.z + p.halfD, roofY: p.roofY, target: p, alive: true, climbable: true, heightAt: () => p.roofY };
+      sf.target = p; p.surface = sf; this.addSurface(sf);
+    }
+  }
+  addSurface(sf) {
+    const id = this.surfaces.length; this.surfaces.push(sf); sf.sid = id; this.paintSurface(sf);
+  }
+  paintSurface(sf) {
+    // only cells whose centre is actually over the building, so roof edges sit on the wall line
+    const a = Math.max(this.minX, Math.ceil(sf.x0 - 0.5)), b = Math.min(this.maxX - 1, Math.floor(sf.x1 - 0.5));
+    const c = Math.max(this.minZ, Math.ceil(sf.z0 - 0.5)), d = Math.min(this.maxZ - 1, Math.floor(sf.z1 - 0.5));
+    for (let z = c; z <= d; z++) for (let x = a; x <= b; x++) {
+      const i = (z - this.minZ) * this.gw + (x - this.minX);
+      this.surf[i] = sf.heightAt(x + 0.5, z + 0.5); this.surfId[i] = sf.sid;
+    }
+  }
+  /** Walkable top at a point for something already off the ground: Infinity = wall you can't enter. */
+  surfaceAt(x, z) {
+    if (!this.inBounds(x, z)) return Infinity;
+    const i = this.gi(x, z); if (this.grid[i] === 2) return Infinity;
+    return this.surf[i];
+  }
+  /** Visible height at a point (courtyards and streets are 0). */
+  heightAt(x, z) { if (!this.inBounds(x, z)) return 0; const i = this.gi(x, z); return this.grid[i] === 2 ? 0 : this.surf[i]; }
+  surfaceObjAt(x, z) { if (!this.inBounds(x, z)) return null; const id = this.surfId[this.gi(x, z)]; return id >= 0 ? this.surfaces[id] : null; }
+  /** Highest walkable surface under a character's footprint (so you don't fall until you're over the edge). */
+  groundUnder(x, z, r = 0.22) {
+    let g = 0;
+    for (const [ox, oz] of [[0, 0], [r, r], [-r, r], [r, -r], [-r, -r]]) {
+      const px = x + ox, pz = z + oz; if (!this.inBounds(px, pz)) continue;
+      const i = this.gi(px, pz); if (this.grid[i] !== 2 && this.surf[i] > g) g = this.surf[i];
+    }
+    return g;
+  }
+  /**
+   * Movement for anything off the ground (on a roof or in the air). A cell can be entered if its
+   * surface is no higher than feet + step (step up / mantle) and, for bots, no more than maxDrop below.
+   */
+  moveElevated(pos, dx, dz, radius, y, step, maxDrop = Infinity) {
+    const free = (x, z) => {
+      for (const [ox, oz] of [[radius, radius], [-radius, radius], [radius, -radius], [-radius, -radius]]) {
+        const px = x + ox, pz = z + oz; if (!this.inBounds(px, pz)) return false;
+        const i = this.gi(px, pz), g = this.grid[i]; if (g === 2) return false;
+        const sh = this.surf[i];
+        if (sh > y + step) return false;
+        if (sh < y - maxDrop) return false;
+        if (sh < 0.05 && g === 1 && y < 1.6) return false; // street prop
+      }
+      return true;
+    };
+    const nx = pos.x + dx; if (free(nx, pos.z)) pos.x = nx;
+    const nz = pos.z + dz; if (free(pos.x, nz)) pos.z = nz;
+  }
+  /** From roof cell (cx,cz) looking along (ax,az): the first open street cell within 3 cells, or null. */
+  streetBeyond(cx, cz, ax, az) {
+    for (let k = 1; k <= 3; k++) {
+      const nx = cx + ax * k, nz = cz + az * k; if (!this.inBounds(nx, nz)) return null;
+      const j = this.gi(nx, nz); if (this.surf[j] > 0.05 || this.grid[j] === 2) return null;
+      if (this.grid[j] === 0) return { x: nx + 0.5, z: nz + 0.5 };
+    }
+    return null;
+  }
+  /** Where to climb down from a roof near (x,z): a point just outside the wall over open street. */
+  roofExitNear(x, z, maxD = 1.5) {
+    let best = null, bd = maxD;
+    const r = Math.ceil(maxD) + 1;
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      const cx = Math.floor(x) + dx, cz = Math.floor(z) + dz; if (!this.inBounds(cx, cz)) continue;
+      const i = this.gi(cx, cz); if (this.surf[i] < 0.5 || this.grid[i] === 2) continue;
+      for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const st = this.streetBeyond(cx, cz, ax, az); if (!st) continue;
+        // edge of this roof cell facing open street
+        const ex = cx + 0.5 + ax * 0.5, ez = cz + 0.5 + az * 0.5;
+        const d = Math.hypot(ex - x, ez - z);
+        if (d < bd) { bd = d; best = { x: st.x, z: st.z, edgeX: ex, edgeZ: ez, roofY: this.surf[i], sf: this.surfaces[this.surfId[i]] }; }
+      }
+    }
+    return best;
+  }
+  /**
+   * Plan a route across connected rooftops (step up <= 0.6m, drop <= 3.5m) from (x,z) to the roof edge
+   * cell nearest (tx,tz). Returns { path: [{x,z}], exit } or null.
+   */
+  roofPlan(x, z, tx, tz, maxCells = 2600) {
+    if (!this.inBounds(x, z)) return null;
+    let start = this.gi(x, z);
+    if (this.surf[start] < 0.5) { // standing over the wall line: start from the nearest roof cell
+      let bs = -1, bd = 9;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { if (!this.inBounds(x + dx, z + dz)) continue; const j = this.gi(x + dx, z + dz); if (this.surf[j] >= 0.5 && this.grid[j] !== 2 && dx * dx + dz * dz < bd) { bd = dx * dx + dz * dz; bs = j; } }
+      if (bs < 0) return null; start = bs;
+    }
+    const prev = new Map(); prev.set(start, -1);
+    const q = [start]; let qi = 0, best = start, bestD = Infinity, bestExit = null;
+    while (qi < q.length && q.length < maxCells) {
+      const i = q[qi++]; const cx = i % this.gw, cz = (i / this.gw) | 0; const h = this.surf[i];
+      let exit = null;
+      for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + ax, nz = cz + az; if (nx < 0 || nz < 0 || nx >= this.gw || nz >= this.gd) continue;
+        const j = nz * this.gw + nx; const g = this.grid[j], sh = this.surf[j];
+        if (sh < 0.05) { if (!exit) { const st = this.streetBeyond(this.minX + cx, this.minZ + cz, ax, az); if (st) exit = { ax, az, st }; } continue; }
+        if (g === 2 || sh < 0.5 || prev.has(j)) continue;
+        if (sh > h + 0.6 || sh < h - 3.5) continue;
+        prev.set(j, i); q.push(j);
+      }
+      if (exit) {
+        const wx = this.minX + cx + 0.5, wz = this.minZ + cz + 0.5; const d = Math.hypot(wx - tx, wz - tz);
+        if (d < bestD) { bestD = d; best = i; bestExit = { x: exit.st.x, z: exit.st.z, edgeX: wx + exit.ax * 0.5, edgeZ: wz + exit.az * 0.5, roofY: h, sf: this.surfaces[this.surfId[i]] }; }
+      }
+    }
+    const path = []; for (let i = best; i !== -1; i = prev.get(i)) path.push({ x: this.minX + (i % this.gw) + 0.5, z: this.minZ + ((i / this.gw) | 0) + 0.5 });
+    path.reverse();
+    return { path, exit: bestExit, end: path[path.length - 1] };
   }
   corridorX(i, z) { const c = this.corridors[i]; return c.avenue ? this.avenueCenterAt(z) : c.x; }
   corridorHalf(i, z) { const c = this.corridors[i]; return c.avenue ? this.avenueHalfAt(z) : c.half; }
@@ -303,6 +435,7 @@ export class World {
       }
     }
     this.fillRect(b.x0, b.z0, b.x1, b.z1, 1);
+    if (W >= 16 && D >= 16) { const cx0 = b.x0 + depth, cx1 = b.x1 - depth, cz0 = b.z0 + depth, cz1 = b.z1 - depth; if (cx1 - cx0 > 1 && cz1 - cz0 > 1) this.fillRect(cx0 + 0.5, cz0 + 0.5, cx1 - 0.5, cz1 - 0.5, 2); }
     const axisFacing = b.side === 'left' ? '+x' : '-x';
     for (const l of lots) {
       const near = b.plazaRow || Math.abs(l.z0) < 60;
@@ -336,7 +469,7 @@ export class World {
       { a: [b.x1, b.z0], b: [b.x0, b.z0], n: [0, 0, -1] },  // -z face
       { a: [b.x0, b.z0], b: [b.x0, b.z1], n: [-1, 0, 0] },  // -x face
     ];
-    const parapet = b.pitched ? 0 : 0.8;
+    const parapet = b.pitched ? 0 : 0.45;
     for (const s of sides) {
       const len = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]);
       const bays = Math.max(1, Math.round(len / BAY_W));
@@ -353,29 +486,32 @@ export class World {
     }
     const roofT = uv(14), tileT = uv(15);
     if (!b.pitched) {
+      // up-facing and inward-facing quads need the opposite winding to the walls
+      const rq = (p0, p1, p2, p3, n, t) => quad(p0, p3, p2, p1, n, t);
       // terrace floor (slightly below parapet top) + inner parapet faces
       const y = b.h;
-      quad([b.x0, y, b.z0], [b.x1, y, b.z0], [b.x1, y, b.z1], [b.x0, y, b.z1], [0, 1, 0], roofT);
+      rq([b.x0, y, b.z0], [b.x1, y, b.z0], [b.x1, y, b.z1], [b.x0, y, b.z1], [0, 1, 0], roofT);
       const yt = y + parapet, t = 0.3;
-      quad([b.x0 + t, yt, b.z0 + t], [b.x1 - t, yt, b.z0 + t], [b.x1 - t, y, b.z0 + t], [b.x0 + t, y, b.z0 + t], [0, 0, 1], roofT);
-      quad([b.x1 - t, yt, b.z1 - t], [b.x0 + t, yt, b.z1 - t], [b.x0 + t, y, b.z1 - t], [b.x1 - t, y, b.z1 - t], [0, 0, -1], roofT);
-      quad([b.x0 + t, yt, b.z1 - t], [b.x0 + t, yt, b.z0 + t], [b.x0 + t, y, b.z0 + t], [b.x0 + t, y, b.z1 - t], [1, 0, 0], roofT);
-      quad([b.x1 - t, yt, b.z0 + t], [b.x1 - t, yt, b.z1 - t], [b.x1 - t, y, b.z1 - t], [b.x1 - t, y, b.z0 + t], [-1, 0, 0], roofT);
+      rq([b.x0 + t, yt, b.z0 + t], [b.x1 - t, yt, b.z0 + t], [b.x1 - t, y, b.z0 + t], [b.x0 + t, y, b.z0 + t], [0, 0, 1], roofT);
+      rq([b.x1 - t, yt, b.z1 - t], [b.x0 + t, yt, b.z1 - t], [b.x0 + t, y, b.z1 - t], [b.x1 - t, y, b.z1 - t], [0, 0, -1], roofT);
+      rq([b.x0 + t, yt, b.z1 - t], [b.x0 + t, yt, b.z0 + t], [b.x0 + t, y, b.z0 + t], [b.x0 + t, y, b.z1 - t], [1, 0, 0], roofT);
+      rq([b.x1 - t, yt, b.z0 + t], [b.x1 - t, yt, b.z1 - t], [b.x1 - t, y, b.z1 - t], [b.x1 - t, y, b.z0 + t], [-1, 0, 0], roofT);
       // parapet top ring
-      quad([b.x0, yt, b.z0], [b.x1, yt, b.z0], [b.x1 - t, yt, b.z0 + t], [b.x0 + t, yt, b.z0 + t], [0, 1, 0], roofT);
-      quad([b.x1, yt, b.z1], [b.x0, yt, b.z1], [b.x0 + t, yt, b.z1 - t], [b.x1 - t, yt, b.z1 - t], [0, 1, 0], roofT);
-      quad([b.x0, yt, b.z1], [b.x0, yt, b.z0], [b.x0 + t, yt, b.z0 + t], [b.x0 + t, yt, b.z1 - t], [0, 1, 0], roofT);
-      quad([b.x1, yt, b.z0], [b.x1, yt, b.z1], [b.x1 - t, yt, b.z1 - t], [b.x1 - t, yt, b.z0 + t], [0, 1, 0], roofT);
+      rq([b.x0, yt, b.z0], [b.x1, yt, b.z0], [b.x1 - t, yt, b.z0 + t], [b.x0 + t, yt, b.z0 + t], [0, 1, 0], roofT);
+      rq([b.x1, yt, b.z1], [b.x0, yt, b.z1], [b.x0 + t, yt, b.z1 - t], [b.x1 - t, yt, b.z1 - t], [0, 1, 0], roofT);
+      rq([b.x0, yt, b.z1], [b.x0, yt, b.z0], [b.x0 + t, yt, b.z0 + t], [b.x0 + t, yt, b.z1 - t], [0, 1, 0], roofT);
+      rq([b.x1, yt, b.z0], [b.x1, yt, b.z1], [b.x1 - t, yt, b.z1 - t], [b.x1 - t, yt, b.z0 + t], [0, 1, 0], roofT);
       // rooftop clutter: water tank / AC box
       const r = this.rng;
       if (r.chance(0.7)) {
         const w = r.float(1.2, 2.2), d = r.float(1.2, 2.2), hh = r.float(0.8, 1.8);
         const x = r.float(b.x0 + 1.5, b.x1 - 1.5 - w), z = r.float(b.z0 + 1.5, b.z1 - 1.5 - d);
+        b.clutter = { x0: x, x1: x + w, z0: z, z1: z + d, top: y + hh };
         quad([x, y, z + d], [x + w, y, z + d], [x + w, y + hh, z + d], [x, y + hh, z + d], [0, 0, 1], roofT);
         quad([x + w, y, z + d], [x + w, y, z], [x + w, y + hh, z], [x + w, y + hh, z + d], [1, 0, 0], roofT);
         quad([x + w, y, z], [x, y, z], [x, y + hh, z], [x + w, y + hh, z], [0, 0, -1], roofT);
         quad([x, y, z], [x, y, z + d], [x, y + hh, z + d], [x, y + hh, z], [-1, 0, 0], roofT);
-        quad([x, y + hh, z], [x + w, y + hh, z], [x + w, y + hh, z + d], [x, y + hh, z + d], [0, 1, 0], roofT);
+        rq([x, y + hh, z], [x + w, y + hh, z], [x + w, y + hh, z + d], [x, y + hh, z + d], [0, 1, 0], roofT);
       }
     } else {
       const y = b.h, ridge = y + Math.min(3, (b.z1 - b.z0) * 0.35), cz = (b.z0 + b.z1) / 2;
@@ -581,11 +717,11 @@ export class World {
   climbableAt(x, z, fx, fz) {
     for (const b of this.buildings) {
       if (!b.climbable || !b.alive) continue;
-      if (x < b.x0 - 1.2 || x > b.x1 + 1.2 || z < b.z0 - 1.2 || z > b.z1 + 1.2) continue;
+      if (x < b.x0 - 1.6 || x > b.x1 + 1.6 || z < b.z0 - 1.6 || z > b.z1 + 1.6) continue;
       const inside = x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1; if (inside) continue;
       const tx = Math.max(b.x0, Math.min(b.x1, x)) - x, tz = Math.max(b.z0, Math.min(b.z1, z)) - z;
-      const d = Math.hypot(tx, tz); if (d > 1.2 || d < 1e-4) continue;
-      if ((tx / d) * fx + (tz / d) * fz > 0.6) return { target: b, roofY: b.roofY, x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 };
+      const d = Math.hypot(tx, tz); if (d > 1.6 || d < 1e-4) continue;
+      if ((tx / d) * fx + (tz / d) * fz > 0.55) return { target: b, roofY: b.roofY, x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1 };
     }
     for (const p of this.props) {
       if (!p.climbable || !p.alive) continue;

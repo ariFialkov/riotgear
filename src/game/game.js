@@ -310,11 +310,11 @@ export class Game {
     for (const p of this.world.props) if (p.alive && p.burnable && !p.indestructible && Math.hypot(p.x - x, p.z - z) < r) { this.damageProp(p, 40, by); }
   }
   collapseBuilding(b, by) {
-    b.alive = false; b.climbable = false;
+    b.alive = false; b.climbable = false; this.world.paintSurface(b);
     const E = this.effects, cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
     E.dust(cx, 1, cz, 120, 4, '#b8ad98'); E.debris(cx, b.h * 0.5, cz, 60, 2);
     this.collapsing = this.collapsing || []; this.collapsing.push({ b, t: 0 });
-    for (const c of this.characters) if (c.onRoof && c.onRoof.target === b) { c.onRoof = null; c.falling = true; c.knockOut(by); }
+    for (const c of this.characters) if (c.onRoof && c.onRoof.target === b) { c.onRoof = null; c.vy = 1; c.knockOut(by); }
     if (by && by.isPlayer) { this.stats.buildings++; this.award(b.value, 'Building collapsed!'); this.hud.toast('BUILDING DOWN', 'good'); }
     this.followCam && (this.followCam.shake = 1.2);
     this.hud.feed('A building collapsed on the square');

@@ -46,8 +46,16 @@ installed from the browser's "Add to home screen" / install prompt.
 | Snatch Squad (PK) | release/arrest | grab & restrain a rioter, drag them behind the line |
 | Grenadier (PK) | fire rubber bullet | automatic fire (auto reload) |
 | Instigator (R) | cycle mob strategy | take command of a nearby mob (rally cry) |
-| Looter (R) | loot a small prop | climb a building/monument (forward = up, back = down) |
+| Looter (R) | loot a small prop | climb any building or the monument (forward = up, back = down); hold at a roof edge to climb down |
 | Brawler (R) | — | pick up a medium prop; release to throw, hold to charge |
+
+Rooftops are real terrain: every roof (flat terraces, tiled pitched roofs, tanks and AC boxes,
+the monument plinth) is in a walkable height map. Looters can run across a block's connected
+roofs, step between roofs of different heights, catch a ledge mid-jump and pull themselves up,
+and make a big running leap across lanes and side streets. Hard drops hurt, though looters roll
+out of most of them. On the roof they rip up tiles for a steady supply of rocks. Bot looters
+take the high ground near the fighting, run to an edge that overlooks the enemy, plant a banner
+with red smoke and rain rocks down, then climb back down when the fight moves on.
 
 Squad strategies: slow advance, collapse into wall, breakout & assault, pulse with snatch
 squad, fall back & regroup, anchor & lob. Mob strategies: sustained shelling, blitzkrieg,

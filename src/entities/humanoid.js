@@ -168,7 +168,7 @@ export class Humanoid {
   }
   get busy() { return !!this.action; }
 
-  update(dt, { speed = 0, moving = false, duck = false, jumpY = 0, ko = false, climbing = false, blocking = false, carrying = false, holding = false, stunned = false, stance = 0, lookYaw = 0, hurt = false } = {}) {
+  update(dt, { speed = 0, moving = false, duck = false, jumpY = 0, ko = false, climbing = false, blocking = false, carrying = false, holding = false, stunned = false, stance = 0, lookYaw = 0, hurt = false, airborne = false } = {}) {
     const lerp = (a, b, t) => a + (b - a) * Math.min(1, t);
     this.duck = lerp(this.duck, duck ? 1 : 0, dt * 8);
     this.fall = lerp(this.fall, ko ? 1 : 0, dt * (ko ? 4 : 2.5));
@@ -198,6 +198,10 @@ export class Humanoid {
     let arx = -s * amp * 0.8, alx = s * amp * 0.8, ary = 0, aly = 0, arz = 0.08, alz = -0.08;
     if (this.weaponId && !moving) { arx = -0.25; arz = 0.25; }
     if (stance > 0) { arx = -0.6 * stance; alx = -0.4 * stance; } // ready stance when enemies near
+    if (airborne && !this.climb) { // tucked legs, arms out for balance
+      this.legL.rotation.x = -0.9; this.legR.rotation.x = 0.35; arx = -1.4; alx = -0.6; arz = 0.6; alz = -0.6;
+      this.body.position.y = this.legLen - 0.1;
+    }
     if (this.shield) { alx = -0.75; aly = 0.15; alz = -0.15; }
     if (this.gun) { alx = -0.9; aly = 0.5; }
     // blocking: shield up and square

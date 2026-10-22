@@ -1,7 +1,7 @@
 // Player controller: movement, jump/duck, melee, throws, and the archetype ability (Z / UI button).
 import * as THREE from 'three';
 import { meleeStrike, shieldBash } from '../game/combat.js';
-import { startClimb, climbStep } from './botai.js';
+import { startClimb, climbStep, startDescend } from './botai.js';
 
 export class PlayerController {
   constructor(game, character, input, camera) {
@@ -24,7 +24,7 @@ export class PlayerController {
       // looter climbing: forward = up, backward = down
       const want = my > 0.3 ? 1 : my < -0.3 ? -1 : 0;
       if (!inp.abilityDown && c.y > 0.1 && c.y < c.climbing.roofY - 0.1) { // let go: drop down
-        c.climbing = null; c.falling = true; c.vy = 0;
+        c.climbing = null; c.vy = 0;
       } else climbStep(c, dt, want);
       return;
     }
@@ -33,7 +33,6 @@ export class PlayerController {
     c.running = l > 0.05 && inp.run && !stunned && !c.ducking && !c.heldProp && !c.carried;
     if (l > 0.05 && !stunned) {
       const sp = c.speed * Math.min(1, l) * (c.running ? 1.75 : 1);
-      c.stepOffRoof = true;
       c.move((dx / l) * sp * dt, (dz / l) * sp * dt);
       c.moving = true; c.moveSpeed = sp;
       if (!this.engageFacing) c.faceTowards(c.pos.x + dx, c.pos.z + dz, dt, 16);
@@ -42,8 +41,11 @@ export class PlayerController {
 
     // jump
     for (const e of events) {
-      if (e.type === 'jump' && c.y <= 0.01 && !c.onRoof && !stunned) { c.vy = 7.2; c.ducking = false; }
-      if (e.type === 'jump' && c.onRoof) { c.vy = 6; c.onRoof = null; c.falling = true; }
+      if (e.type === 'jump' && !c.airborne && !stunned && !c.carried && !c.heldProp) {
+        // looters are built for rooftops: a much bigger running leap
+        c.vy = c.arch.id === 'looter' ? (c.running ? 8.6 : 7.8) : 7.2; c.ducking = false;
+        c.onRoof = null; c.airborne = true;
+      }
       if (e.type === 'duck') { c.ducking = !c.ducking; }
       if (e.type === 'attack') { if (!this.attack()) this.queued = { e, t: 0 }; }
       if (e.type === 'throw') { if (!this.throw(e)) this.queued = { e, t: 0 }; }
@@ -124,17 +126,22 @@ export class PlayerController {
       if (p) { c.faceTowards(p.x, p.z, 1, 1); g.pickupProp(c, p); c.holdCharge = 0; g.hud.toast('Charging… release to throw'); }
       else g.hud.toast('No prop to pick up nearby (barriers, benches, boxes)');
     }
-    if (A === 'looter') {
-      const f = c.forward(); const hit = g.world.climbableAt(c.pos.x, c.pos.z, f.x, f.y);
-      if (hit && !c.onRoof) { startClimb(c, hit); g.hud.toast('Climbing — push forward to go up, back to go down'); }
-      else if (c.onRoof) { // descend from an edge if we're at one
-        const r = c.onRoof; const nearEdge = c.pos.x - r.x0 < 1.2 || r.x1 - c.pos.x < 1.2 || c.pos.z - r.z0 < 1.2 || r.z1 - c.pos.z < 1.2;
-        if (nearEdge) { const { startDescend } = g.botApi; startDescend(c); }
-      }
-    }
+    if (A === 'looter') this.climbTried = false; // climbing starts on a short hold so a tap can still loot
   }
   abilityHeld(dt) {
     const c = this.c, g = this.game, A = c.arch.id; this.holdT += dt;
+    if (A === 'looter' && !this.climbTried && this.holdT > 0.22 && !c.climbing) {
+      this.climbTried = true;
+      if (c.onRoof) { // climb down the nearest wall if we're at an edge
+        const ex = g.world.roofExitNear(c.pos.x, c.pos.z, 1.6);
+        if (ex) { startDescend(c, ex); g.hud.toast('Climbing down'); }
+        else g.hud.toast('Get to a roof edge to climb down, or jump across to the next roof');
+      } else if (!c.airborne) {
+        const f = c.forward(); const hit = g.world.climbableAt(c.pos.x, c.pos.z, f.x, f.y);
+        if (hit) { startClimb(c, hit); if (!this.climbHinted) { this.climbHinted = true; g.hud.toast('Climbing: push forward to go up, back to go down'); } }
+        else g.hud.toast('Face a building wall or the monument to climb');
+      }
+    }
     if (A === 'grenadier') { this.fireT -= dt; if (this.fireT <= 0 && this.holdT > 0.25) { this.fireGun(); } }
     if (A === 'brawler' && c.heldProp) { c.holdCharge = Math.min(1.6, c.holdCharge + dt); g.hud.charge(c.holdCharge / 1.6); }
     if (A === 'commander' || A === 'instigator') {

@@ -11,7 +11,7 @@ export function meleeStrike(game, attacker, { heldDown = false } = {}) {
   const spin = attacker.humanoid.action?.variant === 'spin';
   for (const c of game.characters) {
     if (c === attacker || !c.alive || c.faction === attacker.faction || c.carriedBy) continue;
-    if (c.onRoof && !attacker.onRoof) continue;
+    if (Math.abs(c.y - attacker.y) > 1.4) continue;
     const dx = c.pos.x - ox, dz = c.pos.z - oz, d = Math.hypot(dx, dz);
     if (d > range + c.radius) continue;
     const dot = (f.x * dx + f.y * dz) / (d || 1);
