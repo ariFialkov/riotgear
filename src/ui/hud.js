@@ -1,5 +1,6 @@
 // In-round HUD (DOM): money/time, distance, ammo, ability button, joystick, toasts, overlays, result screen.
 import { ARCHETYPES, PROJECTILES, M_TO_FT } from '../data/config.js';
+import { Minimap } from './minimap.js';
 
 const fmt = (n) => '$' + n.toFixed(2);
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -20,6 +21,7 @@ export class HUD {
           <div class="hud-stat"><span id="hud-line-label">MOB LINE</span><b id="hud-line">0 ft</b></div>
           <div class="hud-ammo" id="hud-ammo"></div>
           <div class="hud-strategy hidden" id="hud-strategy"></div>
+          <canvas class="hud-minimap" id="hud-minimap" width="132" height="182"></canvas>
         </div>
       </div>
       <div class="hud-hp"><div id="hud-hp-bar"></div></div>
@@ -40,6 +42,7 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.bindButtons();
+    this.minimap = new Minimap(this.$('hud-minimap'));
     this.toastT = 0; this.lastGasT = 0; this.feedItems = [];
   }
   bindButtons() {
@@ -83,7 +86,7 @@ export class HUD {
       if (pl.arch.gun) this.refreshAmmo();
       if (g.time - this.lastGasT > 0.3) this.$('ov-gas').style.opacity = 0;
     } else {
-      this.$('hud-money').textContent = `LINE ${Math.round(g.front.z * M_TO_FT)} ft`;
+      this.$('hud-money').textContent = `LINE ${Math.round(g.meanFront() * M_TO_FT)} ft`;
     }
     if (this.flashV > 0) { this.flashV = Math.max(0, this.flashV - 0.05); this.$('ov-flash').style.opacity = this.flashV; }
   }
@@ -111,7 +114,7 @@ export class HUD {
   }
   strategy(grp, s) {
     const el = this.$('hud-strategy'); el.classList.remove('hidden');
-    el.innerHTML = `<span>${grp.name} · COMMANDING</span><b>${s.name}</b><small>${s.desc}</small>`;
+    el.innerHTML = `<span>${grp.name} · ${grp.corridorName.toUpperCase()} · COMMANDING</span><b>${s.name}</b><small>${s.desc}</small>`;
   }
   charge(v, label = '') {
     const el = this.$('hud-charge');

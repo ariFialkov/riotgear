@@ -20,11 +20,12 @@ export class Game {
     this.seed = seed; this.rng = new RNG(seed); this.spectate = spectate; this.selection = selection;
     this.characters = []; this.groups = []; this.gasOwners = []; this.messages = [];
     this.time = 0; this.money = 0; this.roundOver = false; this.playerThreat = 0; this.debugLog = [];
-    this.front = { z: 0, vel: 0, maxPush: 0 };
+    this.fronts = null; // one contested line per corridor, created after the world
     this.stats = { advance: 0, linePush: 0, kos: 0, props: 0, loot: 0, quelled: 0, buildings: 0 };
     this.botApi = { startDescend };
     this.world = world || new World(scene, this.rng.fork('world'), quality);
     this.effects = new Effects(scene, this.rng.fork('fx'));
+    this.fronts = this.world.corridors.map(() => ({ z: 0, vel: 0 }));
     this.projectiles = new Projectiles(this);
     this.spawnGroups();
     if (!spectate) {
@@ -50,28 +51,37 @@ export class Game {
     this.lastFrontForPush = 0;
   }
 
+  /** The front line that matters to the player: their group's corridor (the avenue when spectating). */
+  get front() { const i = this.player?.group ? this.player.group.corridor : this.world.avenueIndex; return this.fronts[i]; }
+  frontAt(x, z) { return this.fronts[this.world.corridorAt(x, z)].z; }
+  meanFront() { return this.fronts.reduce((a, f) => a + f.z, 0) / this.fronts.length; }
+
   // ---------- setup ----------
   spawnGroups() {
     const rng = this.rng.fork('spawn'), q = this.quality.bots;
-    const mk = (faction, count, anchors) => {
+    const W = this.world, A = W.avenueIndex;
+    // groups start spread over the neighbourhood: two on the avenue, one on each inner side street
+    const mk = (faction, count, corridors, weights) => {
       const arches = FACTIONS[faction].archetypes, npc = FACTIONS[faction].npcArchetype;
       const zs = this.world.spawn[faction];
-      anchors.forEach((ax, gi) => {
-        const grp = new Group(this, faction, gi, ax); this.groups.push(grp);
-        const n = Math.round(count / anchors.length);
+      const total = weights.reduce((a, b) => a + b, 0);
+      corridors.forEach((ci, gi) => {
+        const grp = new Group(this, faction, gi, ci); this.groups.push(grp);
+        const n = Math.max(4, Math.round(count * weights[gi] / total));
         for (let i = 0; i < n; i++) {
           const isBot = rng.chance(faction === 'rioter' ? 0.42 : 0.8);
           const archetype = isBot ? rng.pick(arches) : npc;
           const weapons = WEAPONS[faction]; const w = isBot ? rng.pick(weapons.slice(0, 4)).id : weapons[0].id;
           const z = rng.float(zs.z0, zs.z1);
-          const c = new Character(this, { archetype, weaponId: w, x: this.world.avenueCenterAt(z) + ax * 0.5 + rng.float(-3, 3), z, yaw: faction === 'rioter' ? 0 : Math.PI, bandana: isBot ? null : undefined, name: isBot ? botName(rng) : null });
+          const half = W.corridorHalf(ci, z) - 0.5;
+          const c = new Character(this, { archetype, weaponId: w, x: W.corridorX(ci, z) + (ci === A ? (gi % 2 ? 4 : -4) : 0) + rng.float(-half * 0.6, half * 0.6), z, yaw: faction === 'rioter' ? 0 : Math.PI, bandana: isBot ? null : undefined, name: isBot ? botName(rng) : null });
           if (c.arch.smokestick) this.effects.smokeStick(c.humanoid.smokeTip, rng.pick(['#ff2d55', '#2e7dff', '#ffb02e', '#7cff2e']));
           this.addCharacter(c); grp.add(c);
         }
       });
     };
-    mk('rioter', q.rioter, [-9, 0, 9]);
-    mk('peacekeeper', q.peacekeeper, [-8, 0, 8]);
+    mk('rioter', q.rioter, [A, A, A - 1, A + 1], [1.3, 1.3, 0.8, 0.8]);
+    mk('peacekeeper', q.peacekeeper, [A, A, A - 1, A + 1], [1.3, 1.3, 0.8, 0.8]);
     // uncommanded groups start with sensible strategies
     for (const g of this.groups) g.setStrategy(g.faction === 'rioter' ? 'shelling' : 'slow_advance');
   }
@@ -91,13 +101,19 @@ export class Game {
     const present = this.characters.filter((c) => c.faction === faction && !c.removed && !c.arrested).length;
     if (present + n > this.quality.bots[faction] * 1.25) return; // don't flood the map
     const zs = this.world.spawn[faction]; const rng = this.rng;
-    for (let i = 0; i < n; i++) {
-      const isBot = rng.chance(0.5);
-      const z = (faction === 'rioter' ? zs.z0 - 10 : zs.z1 + 10) + rng.float(-6, 6);
-      const c = new Character(this, { archetype: isBot ? rng.pick(FACTIONS[faction].archetypes) : FACTIONS[faction].npcArchetype, weaponId: rng.pick(WEAPONS[faction].slice(0, 3)).id, x: this.world.avenueCenterAt(z) + grp.anchorX * 0.4 + rng.float(-4, 4), z, yaw: faction === 'rioter' ? 0 : Math.PI, name: isBot ? botName(rng) : null });
-      this.addCharacter(c); grp.add(c);
-    }
+    // building a character is not free (meshes + materials), so spawn one per frame instead of a burst
+    this.spawnQueue = this.spawnQueue || [];
+    for (let i = 0; i < n; i++) this.spawnQueue.push({ faction, grp });
     this.hud.toast(faction === 'peacekeeper' ? 'Police reinforcements arriving' : 'More rioters pouring in from the side streets', faction === this.playerFaction ? 'good' : 'bad');
+  }
+  processSpawnQueue() {
+    const q = this.spawnQueue; if (!q || !q.length) return;
+    const { faction, grp } = q.shift(); const rng = this.rng, zs = this.world.spawn[faction];
+    const isBot = rng.chance(0.5);
+    const z = (faction === 'rioter' ? zs.z0 - 10 : zs.z1 + 10) + rng.float(-6, 6);
+    const half = this.world.corridorHalf(grp.corridor, z) - 0.5;
+    const c = new Character(this, { archetype: isBot ? rng.pick(FACTIONS[faction].archetypes) : FACTIONS[faction].npcArchetype, weaponId: rng.pick(WEAPONS[faction].slice(0, 3)).id, x: this.world.corridorX(grp.corridor, z) + rng.float(-half, half), z, yaw: faction === 'rioter' ? 0 : Math.PI, name: isBot ? botName(rng) : null });
+    this.addCharacter(c); grp.add(c);
   }
   dropSupply(near) {
     const types = near.faction === 'rioter' ? ['rock', 'rock', 'molotov'] : ['teargas', 'flashbang'];
@@ -277,27 +293,39 @@ export class Game {
 
   // ---------- front line model ----------
   updateFront(dt) {
-    let R = 0, P = 0; const fz = this.front.z;
+    const W = this.world, n = this.fronts.length;
+    const R = new Float32Array(n), P = new Float32Array(n);
     for (const c of this.characters) {
       if (!c.alive || c.onRoof) continue;
+      const i = W.corridorAt(c.pos.x, c.pos.z); const fz = this.fronts[i].z;
       const d = Math.abs(c.pos.z - fz); if (d > 16) continue;
       const s = c.group?.strategy; const push = (s?.push ?? 0.5);
       let w = (1 - d / 16) * (0.5 + push) * c.strengthMult * (c.arch.build === 'heavy' ? 1.4 : 1);
       if (c.isPlayer) w *= 2.5;
-      if (c.faction === 'rioter') R += w; else P += w;
+      if (c.faction === 'rioter') R[i] += w; else P[i] += w;
     }
-    const net = (R - P) * 0.035;
-    const want = Math.max(-1.6, Math.min(1.6, net));
-    this.front.vel += (want - this.front.vel) * Math.min(1, dt * 1.5);
-    this.front.z += this.front.vel * dt;
-    this.front.z = Math.max(this.world.regroup.rioter.z + 4, Math.min(this.world.regroup.peacekeeper.z - 4, this.front.z));
+    for (let i = 0; i < n; i++) {
+      const f = this.fronts[i];
+      let net = (R[i] - P[i]) * 0.06;
+      // an unguarded corridor is taken easily; a line flanked by a neighbour gives ground
+      if (R[i] > 0 && P[i] === 0) net += 0.8; if (P[i] > 0 && R[i] === 0) net -= 0.8;
+      for (const j of [i - 1, i + 1]) {
+        if (j < 0 || j >= n) continue;
+        const dz = this.fronts[j].z - f.z;
+        if (dz > 22) net += 0.15; if (dz < -22) net -= 0.15;
+      }
+      const want = Math.max(-1.6, Math.min(1.6, net));
+      f.vel += (want - f.vel) * Math.min(1, dt * 1.5);
+      f.z += f.vel * dt;
+      f.z = Math.max(W.regroup.rioter.z + 4, Math.min(W.regroup.peacekeeper.z - 4, f.z));
+    }
   }
 
   // ---------- main loop ----------
   update(dt) {
     dt = Math.min(dt, 0.05);
     this.time += dt;
-    this.world.update(dt); this.effects.update(dt);
+    this.world.update(dt); this.effects.update(dt); this.processSpawnQueue();
     if (this.player && !this.roundOver) {
       this.input.update(dt);
       this.controller.update(dt);
@@ -331,15 +359,15 @@ export class Game {
       this.director.update(dt);
       if (pl.ko && !pl.arrested && pl.koTimer < 0.05 && !this.roundOver) this.hud.koOverlay(false);
       this.followCam.update(dt, pl, this.input);
-      this.hud.update(this);
+      this.hud.update(this); this.hud.minimap?.update(this, dt);
       if (this.effects.flashLevel > 0) this.hud.flash(this.effects.flashLevel * 0.6);
     } else if (this.spectate) {
       this.spectateT += dt;
       const a = this.spectateT * 0.08;
-      const fz = this.front.z;
+      const fz = this.fronts[this.world.avenueIndex].z;
       this.camera.position.lerp(new THREE.Vector3(Math.cos(a) * 26, 14 + Math.sin(a * 0.7) * 3, fz + Math.sin(a) * 26), Math.min(1, dt * 1.5));
       this.camera.lookAt(0, 1, fz);
-      this.hud.update(this);
+      this.hud.update(this); this.hud.minimap?.update(this, dt);
     }
     // sun shadow follows the action
     if (this.sun) { const fx = this.player ? this.player.pos : { x: 0, z: this.front.z }; this.sun.position.set(fx.x + 60, 90, fx.z + 30); this.sun.target.position.set(fx.x, 0, fx.z); this.sun.target.updateMatrixWorld(); }
@@ -354,11 +382,10 @@ export class Game {
 
   dispose() {
     this.scene.remove(this.world.group); this.scene.remove(this.effects.p.points);
+    for (const l of this.effects.lightPool) this.scene.remove(l);
     for (const c of this.characters) this.scene.remove(c.mesh);
     for (const p of this.projectiles.list) this.scene.remove(p.mesh);
-    for (const f of this.effects.fires) this.scene.remove(f.light);
     for (const g of this.effects.gases) this.scene.remove(g.mesh);
-    for (const l of this.effects.lights) this.scene.remove(l.light);
   }
 }
 

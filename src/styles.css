@@ -67,6 +67,9 @@ b { font-weight:700; }
 .hud-ammo i { width:10px; height:10px; border-radius:50%; display:inline-block; }
 .hud-strategy { margin-top:8px; background:var(--panel); border-radius:8px; padding:6px 10px; max-width:220px; }
 .hud-strategy span { font-size:9px; letter-spacing:.2em; color:var(--muted); display:block; } .hud-strategy b { font-size:14px; display:block; } .hud-strategy small { font-size:10px; color:var(--muted); display:block; }
+.hud-minimap { display:block; margin:8px 0 0 auto; width:132px; height:182px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:#12151c; opacity:.92; }
+.touch .hud-minimap { width:92px; height:127px; }
+.spectate .hud-minimap { display:block; }
 .hud-hp { position:absolute; left:50%; top:max(10px, env(safe-area-inset-top)); transform:translateX(-50%); width:160px; height:6px; background:rgba(0,0,0,.5); border-radius:3px; overflow:hidden; }
 .hud-hp div { height:100%; background:#58d36c; transition:width .15s; }
 .hud-building { position:absolute; left:50%; top:calc(max(10px, env(safe-area-inset-top)) + 12px); transform:translateX(-50%); text-align:center; font-size:10px; letter-spacing:.2em; color:#ffd27a; }
@@ -95,7 +98,7 @@ b { font-weight:700; }
 .overlay-gas { position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 40%, rgba(170,180,120,.55) 100%); opacity:0; transition:opacity .4s; pointer-events:none; }
 .overlay-ko { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:radial-gradient(ellipse at center, rgba(0,0,0,.2), rgba(0,0,0,.85)); pointer-events:none; }
 .overlay-ko div { font-size:42px; font-weight:900; letter-spacing:.15em; color:#ff4d2e; } .overlay-ko small { color:var(--muted); letter-spacing:.2em; font-size:12px; }
-.spectate .hud-hp, .spectate .hud-right, .spectate .hud-buttons { display:none; }
+.spectate .hud-hp, .spectate .hud-buttons, .spectate .hud-stat, .spectate .hud-ammo { display:none; }
 .spectate-bar { position:absolute; left:50%; bottom:max(20px, env(safe-area-inset-bottom)); transform:translateX(-50%); }
 
 /* result */

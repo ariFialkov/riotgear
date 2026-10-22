@@ -209,6 +209,5 @@ export function collectibleMesh(type, color) {
   const look = COLLECTIBLE_LOOK[type](); g.add(look);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.04, 6, 24), mat(color, { emissive: color, emissiveIntensity: 1.4 }));
   ring.rotation.x = Math.PI / 2; ring.position.y = -0.3; g.add(ring);
-  const glow = new THREE.PointLight(color, 0.0, 4); g.add(glow);
   return g;
 }

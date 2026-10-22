@@ -83,7 +83,7 @@ export const ARCHETYPES = {
   },
   peacekeeper_npc: {
     id: 'peacekeeper_npc', faction: 'peacekeeper', name: 'Support Officer',
-    stats: { hp: 1.0, speed: 0.95, dmg: 0.9, mass: 1.0 }, build: 'standard', helmet: 'standard', npc: true,
+    stats: { hp: 1.2, speed: 0.95, dmg: 1.0, mass: 1.1 }, build: 'standard', helmet: 'standard', npc: true,
     projectiles: { teargas: 1, flashbang: 0 },
   },
 };
@@ -172,6 +172,6 @@ export const ECONOMY = {
 export const M_TO_FT = 3.28084;
 
 export const QUALITY = {
-  desktop: { bots: { rioter: 44, peacekeeper: 30 }, shadows: true, pixelRatio: 1.5, drawDistance: 260 },
-  mobile:  { bots: { rioter: 30, peacekeeper: 22 }, shadows: false, pixelRatio: 1.0, drawDistance: 200 },
+  desktop: { bots: { rioter: 42, peacekeeper: 34 }, shadows: true, pixelRatio: 1.5, drawDistance: 260 },
+  mobile:  { bots: { rioter: 28, peacekeeper: 24 }, shadows: false, pixelRatio: 1.0, drawDistance: 200 },
 };

@@ -15,7 +15,7 @@ export class PlayerController {
     // camera-relative movement
     const yaw = this.cam.yaw + Math.PI; // forward direction = away from camera
     const mx = inp.move.x, my = inp.move.y;
-    const fx = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    const fx = Math.sin(yaw), fz = Math.cos(yaw), rx = -Math.cos(yaw), rz = Math.sin(yaw);
     let dx = fx * my + rx * mx, dz = fz * my + rz * mx;
     const l = Math.hypot(dx, dz);
     const stunned = c.stun > 0;
@@ -29,6 +29,7 @@ export class PlayerController {
       return;
     }
 
+    this.cam.inputFwd = my; this.cam.inputSide = mx;
     if (l > 0.05 && !stunned) {
       const sp = c.speed * Math.min(1, l);
       c.stepOffRoof = true;
@@ -62,7 +63,7 @@ export class PlayerController {
     // auto pickup collectibles
     for (const col of g.world.collectibles) if (col.alive && Math.hypot(col.x - c.pos.x, col.z - c.pos.z) < 1.3 && Math.abs(c.y) < 1) g.pickupCollectible(c, col);
     // snatch: auto-arrest when we're well behind our line with someone carried
-    if (c.carried && (c.pos.z - g.front.z) * c.dir < -7) g.arrest(c, c.carried);
+    if (c.carried && (c.pos.z - g.frontAt(c.pos.x, c.pos.z)) * c.dir < -7) g.arrest(c, c.carried);
   }
 
   attack(held = false) {
@@ -97,7 +98,7 @@ export class PlayerController {
     let dx, dz;
     if (e.forward) { const f = c.forward(); dx = f.x; dz = f.y; }
     else { // swipe vector in screen space -> world (screen up = camera forward)
-      const yaw = this.cam.yaw + Math.PI; const fx = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+      const yaw = this.cam.yaw + Math.PI; const fx = Math.sin(yaw), fz = Math.cos(yaw), rx = -Math.cos(yaw), rz = Math.sin(yaw);
       dx = fx * -e.sy + rx * e.sx; dz = fz * -e.sy + rz * e.sx;
     }
     c.inventory[type]--; g.hud.refreshAmmo();

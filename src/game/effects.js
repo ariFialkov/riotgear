@@ -60,14 +60,23 @@ export class Particles {
 export class Effects {
   constructor(scene, rng) {
     this.scene = scene; this.rng = rng; this.p = new Particles(scene);
+    // A fixed pool of point lights lives in the scene for the whole round. Adding/removing lights at
+    // runtime makes three.js recompile every material (a visible freeze), so we only re-use these.
+    this.lightPool = [];
+    for (let i = 0; i < 6; i++) { const l = new THREE.PointLight('#ffffff', 0, 1); l.position.set(0, -50, 0); scene.add(l); this.lightPool.push(l); }
     this.fires = []; this.gases = []; this.smokes = []; this.lights = [];
     this.flashLevel = 0;
     this.time = 0;
   }
   r(a, b) { return this.rng.float(a, b); }
 
+  takeLight(color, intensity, distance, x, y, z) {
+    const l = this.lightPool.find((q) => !q.busy); if (!l) return null;
+    l.busy = true; l.color.set(color); l.intensity = intensity; l.distance = distance; l.position.set(x, y, z); return l;
+  }
+  freeLight(l) { if (!l) return; l.busy = false; l.intensity = 0; l.position.set(0, -50, 0); }
   fire(x, y, z, radius, duration, onTick) {
-    const light = new THREE.PointLight('#ff7a2a', 2.5, radius * 5); light.position.set(x, y + 1, z); this.scene.add(light);
+    const light = this.takeLight('#ff7a2a', 2.5, radius * 5, x, y + 1, z);
     this.fires.push({ x, y, z, radius, t: duration, light, onTick });
   }
   gas(x, z, radius, duration) {
@@ -78,8 +87,8 @@ export class Effects {
   smokeStick(obj, color) { this.smokes.push({ obj, color }); }
   flash(x, y, z, strength = 1) {
     this.flashLevel = Math.max(this.flashLevel, strength);
-    const light = new THREE.PointLight('#ffffff', 40, 30); light.position.set(x, y, z); this.scene.add(light);
-    this.lights.push({ light, t: 0.25 });
+    const light = this.takeLight('#ffffff', 40, 30, x, y, z);
+    if (light) this.lights.push({ light, t: 0.25 });
     this.p.burst(x, y, z, 60, () => ({ vx: this.r(-8, 8), vy: this.r(-2, 8), vz: this.r(-8, 8), color: '#ffffff', size: this.r(0.4, 1.2), life: this.r(0.2, 0.5), drag: 3 }));
   }
   sparks(x, y, z, color = '#ffd27a', n = 10) {
@@ -107,14 +116,14 @@ export class Effects {
     const p = this.p;
     for (let i = this.fires.length - 1; i >= 0; i--) {
       const f = this.fires[i]; f.t -= dt;
-      f.light.intensity = 2 + Math.sin(this.time * 17 + i) * 0.8;
+      if (f.light) f.light.intensity = 2 + Math.sin(this.time * 17 + i) * 0.8;
       for (let k = 0; k < 3; k++) {
         const a = this.r(0, 6.28), rr = this.r(0, f.radius);
         p.emit(f.x + Math.cos(a) * rr, f.y + 0.1, f.z + Math.sin(a) * rr, { vx: this.r(-0.5, 0.5), vy: this.r(1.5, 3.5), vz: this.r(-0.5, 0.5), color: this.rng.chance(0.5) ? '#ff8c1a' : '#ffd23d', size: this.r(0.5, 1.1), life: this.r(0.4, 0.9), drag: 1, alpha: 0.95 });
       }
       if (this.rng.chance(0.5)) p.emit(f.x, f.y + 1.2, f.z, { vx: this.r(-0.5, 0.5), vy: this.r(1, 2), vz: this.r(-0.5, 0.5), color: '#1a1a1a', size: this.r(1.2, 2.5), life: this.r(1.5, 3), drag: 0.8, grow: 1.2, alpha: 0.55 });
       if (f.onTick) f.onTick(dt);
-      if (f.t <= 0) { this.scene.remove(f.light); this.fires.splice(i, 1); }
+      if (f.t <= 0) { this.freeLight(f.light); this.fires.splice(i, 1); }
     }
     for (let i = this.gases.length - 1; i >= 0; i--) {
       const g = this.gases[i]; g.t -= dt;
@@ -134,7 +143,7 @@ export class Effects {
     }
     for (let i = this.lights.length - 1; i >= 0; i--) {
       const l = this.lights[i]; l.t -= dt; l.light.intensity *= 0.8;
-      if (l.t <= 0) { this.scene.remove(l.light); this.lights.splice(i, 1); }
+      if (l.t <= 0) { this.freeLight(l.light); this.lights.splice(i, 1); }
     }
     this.flashLevel = Math.max(0, this.flashLevel - dt * 1.6);
     p.update(dt);

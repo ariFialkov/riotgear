@@ -16,11 +16,9 @@ export function updateBot(c, dt) {
   if (c.stun > 0) { c.moving = false; c.moveSpeed = 0; return; }
   // act on cached decision every frame
   const d = c.desired; let dx = d.x - c.pos.x, dz = d.y - c.pos.z; let dist = Math.hypot(dx, dz);
-  if (Math.abs(dz) > 7 && !c.engage) { // far away along the avenue: steer through the avenue centre of the row ahead
-    const aheadZ = c.pos.z + Math.sign(dz) * 9;
-    const cxAhead = world.avenueCenterAt(aheadZ), half = world.avenueHalfAt(aheadZ) - 1;
-    const lane = Math.max(-half, Math.min(half, d.x - world.avenueCenterAt(d.y)));
-    dx = cxAhead + lane * 0.6 - c.pos.x; dist = Math.hypot(dx, dz);
+  if (!c.engage && dist > 3) {
+    const wp = route(c, d.x, d.y);
+    if (wp) { dx = wp.x - c.pos.x; dz = wp.z - c.pos.z; dist = Math.hypot(dx, dz); }
   }
   const stop = c.engage ? Math.max(0.5, c.reach - 0.35) : 0.5;
   if (c.wantBlock) { c.blocking = true; } else c.blocking = false;
@@ -45,6 +43,43 @@ export function updateBot(c, dt) {
   if (c.engage && c.target && c.target.alive) c.faceTowards(c.target.pos.x, c.target.pos.z, dt, 12);
 }
 
+/**
+ * Street routing: corridors (avenue + side streets) are joined by cross streets. To reach a point in
+ * another corridor a bot walks along its own corridor to a cross street on its side of the front,
+ * along the cross street, then up the target corridor. Returns the next waypoint or null (go direct).
+ */
+function route(c, tx, tz) {
+  const W = c.game.world, g = c.game;
+  const inPlaza = (x, z) => z > W.plaza.z0 && z < W.plaza.z1 && x > W.plaza.x0 && x < W.plaza.x1;
+  const here = W.corridorAt(c.pos.x, c.pos.z), target = W.corridorAt(tx, tz);
+  const crossHalf = W.crossStreetHalfAt(c.pos.z);
+  const onCross = crossHalf > 0 && !inPlaza(c.pos.x, c.pos.z);
+  const inCorridor = (i) => Math.abs(c.pos.x - W.corridorX(i, c.pos.z)) < W.corridorHalf(i, c.pos.z) + 1.5;
+  if (here === target && (inCorridor(target) || inPlaza(c.pos.x, c.pos.z))) {
+    // same corridor: look ahead along it so the winding avenue / corners are followed
+    if (Math.abs(tz - c.pos.z) > 7) {
+      const aheadZ = c.pos.z + Math.sign(tz - c.pos.z) * 9;
+      const cx = W.corridorX(target, aheadZ), half = W.corridorHalf(target, aheadZ) - 1;
+      const lane = Math.max(-half, Math.min(half, tx - W.corridorX(target, tz)));
+      return { x: cx + lane * 0.6, z: aheadZ };
+    }
+    return null;
+  }
+  if (onCross || (inPlaza(c.pos.x, c.pos.z) && !inPlaza(tx, tz) && target !== W.avenueIndex)) {
+    // travelling along a cross street (or across the plaza) towards the target corridor
+    if (inPlaza(c.pos.x, c.pos.z)) { // leave the plaza through the nearest cross street on our side
+      const cz = W.nearestCrossZ(c.pos.z, g.fronts[W.avenueIndex].z, -c.dir);
+      return { x: Math.max(W.plaza.x0 + 4, Math.min(W.plaza.x1 - 4, c.pos.x)), z: cz };
+    }
+    const cx = W.corridorX(target, c.pos.z);
+    if (Math.abs(cx - c.pos.x) < 1.5) return { x: cx, z: c.pos.z + Math.sign(tz - c.pos.z) * 6 };
+    return { x: cx, z: c.pos.z };
+  }
+  // in some corridor, need a cross street: pick the nearest one on our side of this corridor's front
+  const cz = W.nearestCrossZ(c.pos.z, g.fronts[here].z, -c.dir);
+  return { x: W.corridorX(here, cz), z: cz };
+}
+
 function decide(c) {
   const g = c.game, world = g.world, grp = c.group, s = grp ? grp.strategy : null;
   const rng = c.rng; const bias = g.biasFor(c.faction);
@@ -52,8 +87,9 @@ function decide(c) {
   c.engage = false; c.wantBlock = false; c.holdStill = false; c.stance = 0;
   // carrying someone (snatch): drag them behind our line
   if (c.carried) {
-    const homeZ = g.front.z + c.dir * -8; // behind own line
-    c.desired.set(world.avenueCenterAt(homeZ) + c.slot.sx * 4, homeZ);
+    const ci = c.group ? c.group.corridor : world.corridorAt(c.pos.x, c.pos.z);
+    const homeZ = g.fronts[ci].z + c.dir * -8; // behind own line
+    c.desired.set(world.corridorX(ci, homeZ) + c.slot.sx * 2, homeZ);
     if (Math.abs(c.pos.z - homeZ) < 2.5) g.arrest(c, c.carried);
     return;
   }
@@ -76,17 +112,18 @@ function decide(c) {
   const t = nearestEnemy(c, 30); c.target = t;
   const dT = t ? c.distTo(t) : 1e9;
   if (t && dT < 6) c.stance = 1;
-  const lineZ = grp ? grp.lineZ() : g.front.z;
-  const slotX = world.avenueCenterAt(lineZ) + (grp ? grp.anchorX : 0) + c.slot.sx * grp.spreadHalf * (s?.spread ?? 1);
+  const ci = grp ? grp.corridor : world.corridorAt(c.pos.x, c.pos.z);
+  const lineZ = grp ? grp.lineZ() : g.fronts[ci].z;
   const slotZ = lineZ - c.dir * (c.slot.sz * 7 * (s?.depth ?? 1) + 0.5) + c.slot.jitter;
-  const halfW = world.avenueHalfAt(slotZ);
-  const clampedX = Math.max(world.avenueCenterAt(slotZ) - halfW, Math.min(world.avenueCenterAt(slotZ) + halfW, slotX));
-  c.desired.set(clampedX, slotZ);
+  const halfW = world.corridorHalf(ci, slotZ), cxz = world.corridorX(ci, slotZ);
+  const slotX = cxz + c.slot.sx * Math.min(grp?.spreadHalf ?? 6, halfW) * (s?.spread ?? 1);
+  c.desired.set(Math.max(cxz - halfW, Math.min(cxz + halfW, slotX)), slotZ);
+  const frontHere = g.fronts[ci].z;
 
   // --- archetype specials ---
   const A = c.arch.id;
   if (A === 'snatch_squad' && t && (s?.snatch ?? 0.3) > 0.15) {
-    const beyond = (t.pos.z - g.front.z) * c.dir; // how far past the front the target is (negative = on their side)
+    const beyond = (t.pos.z - frontHere) * c.dir; // how far past the front the target is (negative = on their side)
     const playerOk = !t.isPlayer || g.director?.ending || (g.director?.progress ?? 0) > 0.88;
     const wantSnatch = playerOk && !c.snatchCd && beyond > -7 && dT < 9 && (s?.snatch ?? 0.3) * (0.5 + aggression) > rng.float(0, 0.9);
     if (wantSnatch || c.snatching) {
@@ -155,7 +192,7 @@ function decide(c) {
   // --- melee engagement ---
   if (t) {
     const chase = 1.5 + aggression * 9 + (s?.scatter ? 10 : 0) + (s?.column ? 4 : 0);
-    const beyond = (c.pos.z - g.front.z) * c.dir; // how far we are past the front
+    const beyond = (c.pos.z - frontHere) * c.dir; // how far we are past the front
     const maxBeyond = (s?.scatter ? 30 : s?.column ? 8 : 2.5 + aggression * 4) + (bias > 0 ? bias * 6 : 0);
     if (dT < c.reach + t.radius + 0.1) {
       c.engage = true; c.desired.set(c.pos.x, c.pos.z);
@@ -164,7 +201,7 @@ function decide(c) {
       else attack(c, false);
       return;
     }
-    if (dT < chase && (beyond < maxBeyond || (t.pos.z - g.front.z) * c.dir < beyond)) {
+    if (dT < chase && (beyond < maxBeyond || (t.pos.z - frontHere) * c.dir < beyond)) {
       c.engage = true; c.desired.set(t.pos.x, t.pos.z); return;
     }
   }
@@ -208,7 +245,7 @@ function nearestClimbable(c, maxD) {
   const w = c.game.world; let best = null, bd = maxD;
   for (const b of w.buildings) {
     if (!b.front || !b.climbable || !b.alive) continue;
-    if ((b.cz - c.game.front.z) * c.dir > 14) continue; // don't climb buildings deep in enemy territory
+    if ((b.cz - c.game.frontAt(b.cx, b.cz)) * c.dir > 14) continue; // don't climb buildings deep in enemy territory
     const dx = Math.max(b.x0 - c.pos.x, 0, c.pos.x - b.x1), dz = Math.max(b.z0 - c.pos.z, 0, c.pos.z - b.z1);
     const d = Math.hypot(dx, dz) + (b.occupants || 0) * 6;
     if (d < bd) { bd = d; best = b; }

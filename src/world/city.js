@@ -28,8 +28,43 @@ export class World {
     this.glassMat = new THREE.MeshLambertMaterial({ color: '#7fb3d5', transparent: true, opacity: 0.45, emissive: '#1a3040', emissiveIntensity: 0.3 });
     this.time = 0;
     this.avenueCenters = [];
+    // North/south side streets that run the whole map: together with the avenue they are the
+    // corridors a riot can move through, and each gets its own front line.
+    this.sideStreets = [
+      { x: -rng.float(70, 78), w: rng.float(6, 8) }, { x: -rng.float(44, 50), w: rng.float(6, 8) },
+      { x: rng.float(44, 50), w: rng.float(6, 8) }, { x: rng.float(70, 78), w: rng.float(6, 8) },
+    ];
+    this.corridors = [
+      { id: 0, name: 'West Alley', x: this.sideStreets[0].x, half: this.sideStreets[0].w / 2 - 0.7 },
+      { id: 1, name: 'West Street', x: this.sideStreets[1].x, half: this.sideStreets[1].w / 2 - 0.7 },
+      { id: 2, name: 'Main Avenue', x: null, half: null, avenue: true },
+      { id: 3, name: 'East Street', x: this.sideStreets[2].x, half: this.sideStreets[2].w / 2 - 0.7 },
+      { id: 4, name: 'East Alley', x: this.sideStreets[3].x, half: this.sideStreets[3].w / 2 - 0.7 },
+    ];
+    this.avenueIndex = 2;
     this.generate();
   }
+  corridorX(i, z) { const c = this.corridors[i]; return c.avenue ? this.avenueCenterAt(z) : c.x; }
+  corridorHalf(i, z) { const c = this.corridors[i]; return c.avenue ? this.avenueHalfAt(z) : c.half; }
+  /** Index of the corridor a point belongs to (nearest centre line). */
+  corridorAt(x, z) {
+    let best = 2, bd = 1e9;
+    for (const c of this.corridors) { const d = Math.abs(x - this.corridorX(c.id, z)); if (d < bd) { bd = d; best = c.id; } }
+    return best;
+  }
+  /** Nearest cross street centre z, preferring ones on the given side of `frontZ` (dir = own side sign). */
+  nearestCrossZ(z, frontZ = null, ownDir = 0) {
+    let best = null, bd = 1e9;
+    for (const cs of this.crossStreets) {
+      if (!cs.cross) continue;
+      const cz = (cs.z0 + cs.z1) / 2;
+      let d = Math.abs(cz - z);
+      if (frontZ !== null && (cz - frontZ) * ownDir > 0) d += 40; // on the wrong (enemy) side: strongly avoid
+      if (d < bd) { bd = d; best = cz; }
+    }
+    return best ?? z;
+  }
+  crossStreetHalfAt(z) { for (const cs of this.crossStreets) if (cs.cross && z >= cs.z0 && z <= cs.z1) return (cs.z1 - cs.z0) / 2; return 0; }
 
   // ---------- grid ----------
   gi(x, z) { return (Math.floor(z) - this.minZ) * this.gw + (Math.floor(x) - this.minX); }
@@ -121,12 +156,16 @@ export class World {
     const rng = this.rng;
     if (x1 - x0 < 12) return;
     const blocks = [];
+    // cut the region at the global side streets, then subdivide very wide pieces with a short lane
+    const cuts = this.sideStreets.filter((st) => st.x - st.w / 2 > x0 + 6 && st.x + st.w / 2 < x1 - 6).sort((a, b) => a.x - b.x);
     let x = x0;
-    while (x < x1) {
-      let w = rng.float(24, 40);
-      if (x1 - (x + w) < 14) w = x1 - x;
-      blocks.push({ x0: x, x1: x + w, z0: row.z0, z1: row.z1, side, plazaRow });
-      x += w + rng.float(5, 8);
+    const pieces = [];
+    for (const st of cuts) { pieces.push([x, st.x - st.w / 2]); x = st.x + st.w / 2; }
+    pieces.push([x, x1]);
+    for (const [p0, p1] of pieces) {
+      if (p1 - p0 < 10) continue;
+      if (p1 - p0 > 46 && rng.chance(0.6)) { const lane = rng.float(5, 7), mid = (p0 + p1) / 2 + rng.float(-6, 6); blocks.push({ x0: p0, x1: mid - lane / 2, z0: row.z0, z1: row.z1, side, plazaRow }); blocks.push({ x0: mid + lane / 2, x1: p1, z0: row.z0, z1: row.z1, side, plazaRow }); }
+      else blocks.push({ x0: p0, x1: p1, z0: row.z0, z1: row.z1, side, plazaRow });
     }
     for (const b of blocks) {
       b.axis = side === 'left' ? Math.abs(b.x1 - x1) < 0.01 : Math.abs(b.x0 - x0) < 0.01; // touches avenue/plaza
@@ -346,12 +385,15 @@ export class World {
       if (rng.chance(0.5)) this.addProp('dumpster', row.cx + (rng.chance(0.5) ? -1 : 1) * (this.avenueHalf - 1.5), rng.float(row.z0 + 3, row.z1 - 3), 0);
       if (rng.chance(0.6)) this.addProp('streetSign', row.cx + (rng.chance(0.5) ? -1 : 1) * (this.avenueHalf - 0.6), rng.float(row.z0 + 3, row.z1 - 3), 0);
     }
+    // side-street lampposts
+    for (const st of this.sideStreets) for (let z = -120; z < 120; z += 18) if (!this.blockedAt(st.x - st.w / 2 + 0.7, z)) this.addProp('lamppost', st.x - st.w / 2 + 0.7, z + rng.float(-3, 3), Math.PI / 2);
     // cross-street furniture
     for (const s of this.crossStreets) {
       if (!s.cross) continue;
       const zc = (s.z0 + s.z1) / 2;
       for (let i = 0; i < 3; i++) {
         const x = rng.float(-80, 80); if (Math.abs(x) < 14) continue;
+        if (this.sideStreets.some((st) => Math.abs(st.x - x) < st.w / 2 + 3)) continue;
         const type = rng.pick(['car', 'scooter', 'trashCan', 'dumpster', 'bikeRack', 'streetSign']);
         this.addProp(type, x, zc + rng.float(-2, 2), rng.float(0, 6.28));
       }

@@ -9,13 +9,23 @@ export class FollowCamera {
     this.yaw = target.yaw + Math.PI; this.pos.set(target.pos.x - Math.sin(target.yaw) * this.dist, target.y + 3, target.pos.z - Math.cos(target.yaw) * this.dist);
   }
   update(dt, target, input) {
-    // yaw: follow the character's facing when moving, with manual offset from Q/E / right-drag
+    // Rigid follow: the camera only turns to follow the character when they travel forward
+    // (stick/W mostly pushed forward), never on strafes, turns-in-place or combat facing snaps.
+    // Manual orbit (Q/E, right-drag) is added on top and holds until the player moves forward.
     if (input) { this.manualYaw += (input.camYaw - (this.lastInputYaw || 0)); this.lastInputYaw = input.camYaw; }
-    const wantYaw = target.yaw + Math.PI + this.manualYaw;
-    let d = wantYaw - this.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
-    const rate = target.moving ? 3.5 : 1.2;
-    this.yaw += d * Math.min(1, dt * rate);
-    this.manualYaw *= Math.max(0, 1 - dt * (target.moving ? 0.6 : 0.1));
+    const fwd = this.inputFwd ?? 0, side = this.inputSide ?? 0;
+    const travelling = target.moving && fwd > 0.35 && Math.abs(side) < 0.9;
+    if (travelling) {
+      const wantYaw = target.yaw + Math.PI + this.manualYaw;
+      let d = wantYaw - this.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) > 0.12) this.yaw += d * Math.min(1, dt * 2.2);
+      this.manualYaw *= Math.max(0, 1 - dt * 0.8);
+    } else {
+      // allow manual orbit to apply immediately even when standing still
+      const dm = input ? (input.camYaw - (this.appliedInputYaw || 0)) : 0;
+      if (input) this.appliedInputYaw = input.camYaw;
+      this.yaw += dm; this.manualYaw -= dm;
+    }
     const h = target.y + 1.5 + (target.ducking ? -0.3 : 0);
     let dist = this.dist + (target.onRoof ? 2 : 0);
     // pull in if the camera would be inside a building
@@ -27,9 +37,9 @@ export class FollowCamera {
       if (t <= 0.3) dist *= 0.3;
     }
     const want = new THREE.Vector3(target.pos.x + Math.sin(this.yaw) * dist, h + dist * this.pitch + 0.6, target.pos.z + Math.cos(this.yaw) * dist);
-    this.pos.lerp(want, Math.min(1, dt * 9));
+    this.pos.lerp(want, Math.min(1, dt * 7));
     const lookWant = new THREE.Vector3(target.pos.x - Math.sin(this.yaw) * 2.5, h, target.pos.z - Math.cos(this.yaw) * 2.5);
-    this.look.lerp(lookWant, Math.min(1, dt * 12));
+    this.look.lerp(lookWant, Math.min(1, dt * 14));
     if (this.shake > 0) { this.shake -= dt; this.pos.x += (Math.random() - 0.5) * 0.2 * this.shake; this.pos.y += (Math.random() - 0.5) * 0.2 * this.shake; }
     this.cam.position.copy(this.pos); this.cam.lookAt(this.look);
   }

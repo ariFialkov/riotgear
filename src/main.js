@@ -86,7 +86,14 @@ function makeLobby(seed) {
   return L;
 }
 
+/** Spectating shows the whole square from above: drop resolution and shadows so the orbit stays smooth. */
+function setSpectateQuality(on) {
+  renderer.setPixelRatio(on ? 1 : Math.min(devicePixelRatio, quality.pixelRatio));
+  if (quality.shadows) { renderer.shadowMap.enabled = !on; sun.castShadow = !on; scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; }); }
+  scene.fog.far = on ? quality.drawDistance * 0.8 : quality.drawDistance;
+}
 function startLobby() {
+  setSpectateQuality(false);
   mode = 'lobby'; hud.stop(); resultRoot.classList.add('hidden');
   if (game) { game.dispose(); game = null; }
   roundSeed = newSeed();
@@ -118,6 +125,7 @@ function startLiveRound() {
   const world = lobby.world; lobby.dispose(); lobby = null;
   game = new Game({ scene, camera, renderer, hud, input, quality, seed: roundSeed, selection: null, spectate: true, world });
   game.sun = sun; hud.stop(); input.enabled = false;
+  setSpectateQuality(true);
   state.live = true; state.lobbyCount = 18 + Math.floor(Math.random() * 14); menu.render();
   game.onEnd = () => { if (game?.spectateBar) game.spectateBar.remove(); startLobby(); };
   game.liveDeadline = LIVE_ROUND_SECONDS;
@@ -129,7 +137,7 @@ function startRound(spectate) {
   const world = lobby ? lobby.world : new World(scene, new RNG(roundSeed).fork('world'), quality); if (lobby) { lobby.dispose(); lobby = null; }
   const selection = { faction: state.faction, archetype: state.archetype, weapon: WEAPONS[state.faction][state.weaponTier].id, stake: STAKES[state.weaponTier] };
   game = new Game({ scene, camera, renderer, hud, input, quality, seed: roundSeed, selection, spectate, world });
-  game.sun = sun;
+  game.sun = sun; setSpectateQuality(false);
   hud.start(game); input.enabled = !spectate; input.camYaw = 0; state.live = false;
   game.onEnd = (reason) => {
     mode = 'result'; hud.stop();
