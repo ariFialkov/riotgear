@@ -1,7 +1,7 @@
 /* Riotgear service worker: app-shell precache + runtime cache for hashed assets. */
-const VERSION = 'riotgear-v1';
+const VERSION = 'riotgear-v2';
 // All paths are relative to the service worker's location so the app works at / or under /<repo>/.
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

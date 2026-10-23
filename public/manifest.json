@@ -1,6 +1,7 @@
 {
   "name": "Riotgear",
   "short_name": "Riotgear",
+  "id": "./",
   "description": "3D third-person riot action betting game. Rioter or peacekeeper. Pick your stake, break the line.",
   "start_url": "./",
   "scope": "./",

@@ -22,6 +22,11 @@ npm run preview    # serve the production build
 npm test           # RTP distribution tests
 ```
 
+`npm run build` produces a self-contained `dist/` folder with relative paths, so it can be
+uploaded to any static host or sub-path as is. The PWA manifest is `manifest.json` (no
+`.webmanifest` files). The display fonts load from Google Fonts; without network access to them
+the UI falls back to system fonts.
+
 The service worker caches the app shell, so after the first visit it works offline and can be
 installed from the browser's "Add to home screen" / install prompt.
 
