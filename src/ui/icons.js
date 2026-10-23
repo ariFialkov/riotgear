@@ -52,6 +52,14 @@ export const ICONS = {
   cog: wrap('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>'),
   refresh: wrap('<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v5h-5"/>'),
   strategy: wrap('<path d="M4 18l5-6 4 3 7-8"/><path d="M16 7h4v4"/>'),
+  keyboard: wrap('<rect x="2.5" y="6" width="19" height="12" rx="1.5"/><path d="M6 10h1M9 10h1M12 10h1M15 10h1M18 10h0M6 14h1M17 14h1M9 14h6"/>'),
+  mouse: wrap('<rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 3v6"/><path d="M7 9h10"/>'),
+  touch: wrap('<path d="M9 11V5a1.5 1.5 0 0 1 3 0v6"/><path d="M12 10.5V9a1.5 1.5 0 0 1 3 0v2M15 10.5a1.5 1.5 0 0 1 3 0V15c0 3.5-2.5 6-6 6-2.5 0-4-1-5.5-3l-2.4-3.4a1.4 1.4 0 0 1 2.2-1.7L9 14.5"/><path d="M5 3l1.5 1.5M3 7h2"/>'),
+  swipe: wrap('<path d="M4 16c4-6 10-9 16-9"/><path d="M16 4l4 3-3 4"/><circle cx="5" cy="17" r="1.5"/>'),
+  pinch: wrap('<path d="M5 5l5 5M19 19l-5-5"/><path d="M5 9V5h4M19 15v4h-4"/>'),
+  joystick: wrap('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2"/>'),
+  orbit: wrap('<path d="M4 12a8 4 0 0 0 16 0"/><path d="M20 12a8 4 0 0 0-16 0" stroke-dasharray="2 2.5"/><path d="M17 15l3-3 2 3"/><circle cx="12" cy="12" r="2"/>'),
+  close: wrap('<path d="M6 6l12 12M18 6L6 18"/>'),
   shield_small: wrap('<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/>'),
 };
 

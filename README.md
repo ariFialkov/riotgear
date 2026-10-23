@@ -36,6 +36,9 @@ installed from the browser's "Add to home screen" / install prompt.
 | Jump / duck toggle | `Space` / double-tap `Space` | JUMP button / double-tap |
 | Archetype ability | tap / hold `Z` | tap / hold the Z button |
 | Camera orbit | `Q` / `E`, right-drag | automatic |
+| Zoom | mouse wheel, trackpad pinch | two-finger pinch |
+
+The lobby's CONTROLS button opens the same table as a pictogram sheet (touch-first on phones).
 
 ### Archetype abilities (Z)
 

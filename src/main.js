@@ -135,7 +135,7 @@ function frame(now) {
     lobby.t += dt; lobby.world.update(dt);
     for (const l of lobby.lineup) l.h.update(dt, { moving: false, stance: 1 });
     if (lobby.ring) lobby.ring.scale.setScalar(1 + Math.sin(lobby.t * 3) * 0.08);
-    cine.update(dt, lobby.focus, isMobile ? 9 : 8, isMobile ? 4.2 : 3.4, 0, isMobile ? -2.6 : -1.9, lobby.faceAngle);
+    cine.update(dt, lobby.focus, isMobile ? 9 : 7.5, isMobile ? 4.2 : 3.0, 0, isMobile ? -1.6 : -0.8, lobby.faceAngle);
     countAcc += dt; if (countAcc >= 1) { countAcc = 0; state.countdown = Math.max(0, state.countdown - 1); menu.tick(); if (state.countdown === 0) rollLobby(); }
   } else if (game) {
     game.update(dt);

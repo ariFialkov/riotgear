@@ -2,10 +2,8 @@
 // the selected archetype's brief, a district map preview, countdown and join.
 import { FACTIONS, ARCHETYPES, WEAPONS, STAKES } from '../data/config.js';
 import { ICONS, ABILITY_ICON, icon } from './icons.js';
-import { Minimap } from './minimap.js';
 
 const fmt = (n) => '$' + n.toFixed(2);
-const pad = (n) => String(n).padStart(2, '0');
 
 export class Menu {
   constructor(root, state, { onChange, onJoin }) {
@@ -14,92 +12,94 @@ export class Menu {
   }
   render() {
     const s = this.state, F = FACTIONS[s.faction];
-    const arch = ARCHETYPES[s.archetype], weapons = WEAPONS[s.faction], w = weapons[s.weaponTier];
-    const st = arch.stats;
-    const bar = (v) => `<i style="width:${Math.round(Math.min(1, (v - 0.6) / 0.9) * 100)}%"></i>`;
+    const weapons = WEAPONS[s.faction], w = weapons[s.weaponTier], arch = ARCHETYPES[s.archetype];
     this.root.innerHTML = `
-      <div class="menu-wrap">
-        <header class="menu-head">
-          <div class="brand"><span class="brand-word">RIOT</span><span class="brand-word accent">GEAR</span><span class="brand-sub">SIMULATED CROWD ACTION · STAKE &amp; SURVIVE</span></div>
-          <div class="head-right">
-            <div class="readout"><span>LOBBY</span><b>#${s.lobbyId}</b></div>
-            <div class="readout"><span>BALANCE</span><b>${fmt(s.balance)}</b></div>
-          </div>
-        </header>
-        <section class="panel" style="--c:${F.color};--a:${F.accent}">
-          <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
-          <div class="hazard"></div>
-          <div class="panel-grid">
-            <div class="col-a">
-              <div class="seg" id="seg-faction">
-                ${Object.values(FACTIONS).map((f) => `<button data-f="${f.id}" class="${s.faction === f.id ? 'on' : ''}" style="--c:${f.color}">${icon(f.id)}<span>${f.name.toUpperCase()}</span></button>`).join('')}
-              </div>
-              <div class="row-label"><span>01</span> ARCHETYPE</div>
-              <div class="cards arch" id="cards-arch">
-                ${F.archetypes.map((id) => { const a = ARCHETYPES[id]; return `<button data-a="${id}" class="${s.archetype === id ? 'on' : ''}">${icon(id, 'big')}<b>${a.name}</b></button>`; }).join('')}
-              </div>
-              <div class="brief">
-                <div class="brief-head">${icon(s.archetype)}<div><b>${arch.name.toUpperCase()}</b><span>${F.name.slice(0, -1)} · ${arch.build} build</span></div></div>
-                <p>${arch.blurb}</p>
-                <div class="abil">
-                  <div>${icon(ABILITY_ICON[s.archetype])}<span><em>Z TAP</em>${arch.ability.tap}</span></div>
-                  <div>${icon(ABILITY_ICON[s.archetype])}<span><em>Z HOLD</em>${arch.ability.hold}</span></div>
-                </div>
-                <div class="stats">
-                  <div><span>SPEED</span><div class="bar">${bar(st.speed)}</div></div>
-                  <div><span>POWER</span><div class="bar">${bar(st.dmg)}</div></div>
-                  <div><span>TOUGHNESS</span><div class="bar">${bar(st.hp)}</div></div>
-                </div>
-              </div>
-            </div>
-            <div class="col-b">
-              <div class="row-label"><span>02</span> WEAPON · STAKE</div>
-              <div class="cards weapons" id="chips-weapon">
-                ${weapons.map((wp, i) => `<button data-w="${i}" class="${s.weaponTier === i ? 'on' : ''}">${icon(wp.id, 'big')}<span class="wname"><b>${wp.name}</b><small>${wp.desc}</small></span><em>${fmt(STAKES[i])}</em><i class="tier">${'<u></u>'.repeat(i + 1)}</i></button>`).join('')}
-              </div>
-            </div>
-            <aside class="col-c">
-              <div class="district">
-                <div class="district-head">${icon('map')}<div><b>${s.district}</b><span>${s.cityStats}</span></div></div>
-                <canvas id="menu-map" width="156" height="214"></canvas>
-                <div class="legend"><i style="--k:#ff4d2e"></i>mobs at the edges <i style="--k:#3d8bff"></i>squads in the plaza</div>
-              </div>
-              <div class="countdown">
-                <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="17" class="ring-bg"/><circle cx="20" cy="20" r="17" class="ring" id="ring" style="stroke-dasharray:${(s.countdown / 20) * 106.8} 106.8"/></svg>
-                <div><span>NEXT ROUND</span><b id="menu-count">0:${pad(s.countdown)}</b><small>${s.lobbyCount} queued</small></div>
-              </div>
-              <button class="join" id="btn-join"><span class="join-main">JOIN ROUND</span><span class="join-sub">STAKE ${fmt(STAKES[s.weaponTier])} · ${w.name.toUpperCase()}</span></button>
-            </aside>
-          </div>
-        </section>
-        <footer class="menu-foot">
-          <div>${icon('run')}WASD · SHIFT RUN &nbsp; ${icon('target')}CLICK STRIKE · DRAG THROW &nbsp; ${icon('jump')}SPACE JUMP · 2× DUCK &nbsp; ${icon('cog')}Z ABILITY &nbsp; ${icon('refresh')}WHEEL / PINCH ZOOM</div>
-          <button class="ghost tiny" id="btn-install">INSTALL APP</button>
-        </footer>
-      </div>`;
+      <header class="menu-head">
+        <div class="brand"><span class="brand-word">RIOT</span><span class="brand-word accent">GEAR</span></div>
+        <div class="head-right">
+          <button class="icon-btn" id="btn-controls" title="Controls">${icon('keyboard')}<span>CONTROLS</span></button>
+          <div class="readout">${icon('cash')}<b>${fmt(s.balance)}</b></div>
+        </div>
+      </header>
+      <div class="clock" style="--c:${F.color}">
+        <svg viewBox="0 0 64 64" class="clock-dial">
+          <circle cx="32" cy="32" r="29" class="dial-ticks"/>
+          <circle cx="32" cy="32" r="24" class="ring-bg"/>
+          <circle cx="32" cy="32" r="24" class="ring" id="ring" style="stroke-dasharray:${(s.countdown / 20) * 150.8} 150.8"/>
+        </svg>
+        <b id="menu-count">${s.countdown}</b>
+        <span>NEXT ROUND · #${s.lobbyId}</span>
+      </div>
+      <section class="strip" style="--c:${F.color};--a:${F.accent}">
+        <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+        <div class="hazard"></div>
+        <div class="grp seg" id="seg-faction">
+          ${Object.values(FACTIONS).map((f) => `<button data-f="${f.id}" class="${s.faction === f.id ? 'on' : ''}" style="--c:${f.color}" title="${f.name}">${icon(f.id)}<span>${f.name.toUpperCase()}</span></button>`).join('')}
+        </div>
+        <div class="grp tiles arch" id="cards-arch">
+          ${F.archetypes.map((id) => `<button data-a="${id}" class="${s.archetype === id ? 'on' : ''}" title="${ARCHETYPES[id].name}">${icon(id)}<span>${ARCHETYPES[id].name.replace('Front ', '').replace(' Squad', '')}</span></button>`).join('')}
+        </div>
+        <div class="grp tiles weapons" id="chips-weapon">
+          ${weapons.map((wp, i) => `<button data-w="${i}" class="${s.weaponTier === i ? 'on' : ''}" title="${wp.name}">${icon(wp.id)}<em>${fmt(STAKES[i]).replace('.00', '')}</em></button>`).join('')}
+        </div>
+        <button class="join" id="btn-join">${icon(arch.id, 'join-ico')}<span class="join-main">JOIN</span><span class="join-sub">${w.name.toUpperCase()} · ${fmt(STAKES[s.weaponTier])}</span></button>
+      </section>
+      ${this.controlsOpen ? this.controlsHTML(arch) : ''}`;
     this.root.querySelector('#seg-faction').onclick = (e) => { const b = e.target.closest('[data-f]'); if (!b) return; this.set({ faction: b.dataset.f, archetype: FACTIONS[b.dataset.f].archetypes[0] }); };
     this.root.querySelector('#cards-arch').onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) this.set({ archetype: b.dataset.a }); };
     this.root.querySelector('#chips-weapon').onclick = (e) => { const b = e.target.closest('[data-w]'); if (b) this.set({ weaponTier: +b.dataset.w }); };
     this.root.querySelector('#btn-join').onclick = () => this.onJoin();
-    const inst = this.root.querySelector('#btn-install');
-    if (window.__installPrompt) { inst.onclick = () => window.__installPrompt.prompt(); } else inst.style.display = 'none';
-    this.drawMap();
+    this.root.querySelector('#btn-controls').onclick = () => { this.controlsOpen = true; this.render(); };
+    const close = this.root.querySelector('#controls-close'); if (close) close.onclick = () => { this.controlsOpen = false; this.render(); };
+    const sheet = this.root.querySelector('.controls'); if (sheet) sheet.onclick = (e) => { if (e.target === sheet) { this.controlsOpen = false; this.render(); } };
   }
-  drawMap() {
-    const c = this.root.querySelector('#menu-map'); if (!c || !this.state.world) return;
-    const mm = new Minimap(c); mm.setWorld(this.state.world, false);
-    const ctx = c.getContext('2d'); ctx.drawImage(mm.bg, 0, 0);
-    const W = this.state.world, C = W.center;
-    ctx.strokeStyle = 'rgba(255,230,80,.6)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1; ctx.beginPath();
-    for (let i = 0; i <= W.SECTORS; i++) { const a = W.sectorAngle(i % W.SECTORS); const [x, y] = mm.toPx(C.x + Math.cos(a) * W.R0, C.z + Math.sin(a) * W.R0); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
-    ctx.stroke(); ctx.setLineDash([]);
-    for (const sp of (this.state.spawns || [])) { const [x, y] = mm.toPx(sp.x, sp.z); ctx.fillStyle = 'rgba(255,77,46,.9)'; ctx.beginPath(); ctx.arc(x, y, 3, 0, 6.28); ctx.fill(); }
-    const [px, py] = mm.toPx(C.x, C.z); ctx.fillStyle = 'rgba(61,139,255,.95)'; ctx.beginPath(); ctx.arc(px, py, 3.5, 0, 6.28); ctx.fill();
+  /** Pictogram control sheet: key caps / gestures beside icons, one short label each. */
+  controlsHTML(arch) {
+    const key = (k) => `<kbd>${k}</kbd>`;
+    const row = (glyph, ic, label) => `<div class="ctl">${glyph}<i class="arrow"></i>${icon(ic)}<span>${label}</span></div>`;
+    const touch = matchMedia('(pointer: coarse)').matches;
+    const zKey = touch ? '<kbd class="round">Z</kbd>' : key('Z');
+    return `
+      <div class="controls${touch ? ' touch-first' : ''}">
+        <div class="sheet">
+          <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+          <div class="hazard"></div>
+          <button class="icon-btn close" id="controls-close">${icon('close')}</button>
+          <div class="sheet-cols">
+            <div class="col kb">
+              <div class="col-head">${icon('keyboard')}${icon('mouse')}</div>
+              ${row(key('W') + key('A') + key('S') + key('D'), 'run', 'Move')}
+              ${row(key('SHIFT'), 'run', 'Run')}
+              ${row(icon('mouse') + key('X'), 'target', 'Strike')}
+              ${row(icon('swipe'), 'rock', 'Drag to throw')}
+              ${row(key('SPACE'), 'jump', 'Jump')}
+              ${row(key('SPACE') + key('SPACE'), 'duck', 'Duck')}
+              ${row(key('Q') + key('E'), 'orbit', 'Camera')}
+              ${row(icon('pinch'), 'refresh', 'Zoom')}
+            </div>
+            <div class="col tc">
+              <div class="col-head">${icon('touch')}</div>
+              ${row(icon('joystick'), 'run', 'Move')}
+              ${row(icon('joystick') + '<kbd>MAX</kbd>', 'run', 'Run')}
+              ${row(icon('touch'), 'target', 'Tap to strike')}
+              ${row(icon('swipe'), 'rock', 'Swipe to throw')}
+              ${row('<kbd class="round">' + ICONS.jump + '</kbd>', 'jump', 'Jump')}
+              ${row(icon('pinch'), 'refresh', 'Zoom')}
+            </div>
+            <div class="col arch-col">
+              <div class="col-head">${icon(arch.id)}<b>${arch.name.toUpperCase()}</b></div>
+              ${row(zKey, ABILITY_ICON[arch.id], arch.ability.tap)}
+              ${row(zKey + '<kbd>HOLD</kbd>', ABILITY_ICON[arch.id], arch.ability.hold)}
+            </div>
+          </div>
+        </div>
+      </div>`;
   }
   set(patch) { Object.assign(this.state, patch); this.render(); this.onChange(this.state); }
   tick() {
-    const c = this.root.querySelector('#menu-count'); if (c) c.textContent = '0:' + pad(this.state.countdown);
-    const r = this.root.querySelector('#ring'); if (r) r.style.strokeDasharray = `${(this.state.countdown / 20) * 106.8} 106.8`;
+    const c = this.root.querySelector('#menu-count'); if (c) c.textContent = this.state.countdown;
+    const r = this.root.querySelector('#ring'); if (r) r.style.strokeDasharray = `${(this.state.countdown / 20) * 150.8} 150.8`;
+    const clock = this.root.querySelector('.clock'); if (clock) clock.classList.toggle('urgent', this.state.countdown <= 5);
   }
   show() { this.root.classList.remove('hidden'); this.render(); }
   hide() { this.root.classList.add('hidden'); }
